@@ -1,0 +1,200 @@
+/*
+  # Initial database schema
+
+  1. New Tables
+    - `profiles` - User profiles with personal information
+    - `chats` - Chat conversations (groups or direct messages)
+    - `chat_participants` - Links users to chats they're part of
+    - `messages` - Individual messages in chats
+
+  2. Security
+    - Enable RLS on all tables
+    - Add policies for authenticated users to manage their own data
+*/
+
+-- Create profiles table
+CREATE TABLE IF NOT EXISTS profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users ON DELETE CASCADE,
+  email TEXT UNIQUE NOT NULL,
+  full_name TEXT NOT NULL,
+  avatar_url TEXT,
+  phone_number TEXT,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  last_seen TIMESTAMPTZ
+);
+
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can read all profiles"
+  ON profiles
+  FOR SELECT
+  TO authenticated
+  USING (true);
+
+CREATE POLICY "Users can update their own profile"
+  ON profiles
+  FOR UPDATE
+  TO authenticated
+  USING (auth.uid() = id);
+
+-- Create chats table
+CREATE TABLE IF NOT EXISTS chats (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT,
+  type TEXT NOT NULL DEFAULT 'direct',
+  created_at TIMESTAMPTZ DEFAULT now(),
+  created_by UUID REFERENCES profiles(id),
+  is_demo BOOLEAN DEFAULT false,
+  is_internal BOOLEAN DEFAULT false,
+  is_signup BOOLEAN DEFAULT false,
+  is_content BOOLEAN DEFAULT false,
+  last_message_at TIMESTAMPTZ
+);
+
+ALTER TABLE chats ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can create chats"
+  ON chats
+  FOR INSERT
+  TO authenticated
+  WITH CHECK (true);
+
+CREATE POLICY "Users can read chats they participate in"
+  ON chats
+  FOR SELECT
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM chat_participants
+      WHERE chat_participants.chat_id = chats.id
+      AND chat_participants.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can update chats they participate in"
+  ON chats
+  FOR UPDATE
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM chat_participants
+      WHERE chat_participants.chat_id = chats.id
+      AND chat_participants.user_id = auth.uid()
+    )
+  );
+
+-- Create chat participants table
+CREATE TABLE IF NOT EXISTS chat_participants (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  chat_id UUID REFERENCES chats(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  joined_at TIMESTAMPTZ DEFAULT now(),
+  role TEXT DEFAULT 'member',
+  is_muted BOOLEAN DEFAULT false,
+  is_pinned BOOLEAN DEFAULT false,
+  UNIQUE(chat_id, user_id)
+);
+
+ALTER TABLE chat_participants ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can add participants to chats they created"
+  ON chat_participants
+  FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM chats
+      WHERE chats.id = chat_participants.chat_id
+      AND chats.created_by = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can read participants of chats they participate in"
+  ON chat_participants
+  FOR SELECT
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM chat_participants AS cp
+      WHERE cp.chat_id = chat_participants.chat_id
+      AND cp.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can update their own participation"
+  ON chat_participants
+  FOR UPDATE
+  TO authenticated
+  USING (user_id = auth.uid());
+
+-- Create messages table
+CREATE TABLE IF NOT EXISTS messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  chat_id UUID REFERENCES chats(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  content TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  is_read BOOLEAN DEFAULT false,
+  read_at TIMESTAMPTZ,
+  type TEXT DEFAULT 'text'
+);
+
+ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can send messages to chats they participate in"
+  ON messages
+  FOR INSERT
+  TO authenticated
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM chat_participants
+      WHERE chat_participants.chat_id = messages.chat_id
+      AND chat_participants.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can read messages in chats they participate in"
+  ON messages
+  FOR SELECT
+  TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM chat_participants
+      WHERE chat_participants.chat_id = messages.chat_id
+      AND chat_participants.user_id = auth.uid()
+    )
+  );
+
+CREATE POLICY "Users can update their own messages"
+  ON messages
+  FOR UPDATE
+  TO authenticated
+  USING (user_id = auth.uid());
+
+-- Create function to update last_message_at in chat when a message is inserted
+CREATE OR REPLACE FUNCTION update_last_message_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+  UPDATE chats
+  SET last_message_at = NEW.created_at
+  WHERE id = NEW.chat_id;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER update_chat_last_message
+AFTER INSERT ON messages
+FOR EACH ROW
+EXECUTE FUNCTION update_last_message_timestamp();
+
+-- Create functions for realtime subscriptions
+BEGIN;
+  -- Enable realtime for all tables
+  ALTER PUBLICATION supabase_realtime ADD TABLE chats, chat_participants, messages, profiles;
+
+  -- Configure the realtime payload
+  ALTER TABLE chats REPLICA IDENTITY FULL;
+  ALTER TABLE chat_participants REPLICA IDENTITY FULL;
+  ALTER TABLE messages REPLICA IDENTITY FULL;
+  ALTER TABLE profiles REPLICA IDENTITY FULL;
+COMMIT;
