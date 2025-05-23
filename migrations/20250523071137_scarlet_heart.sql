@@ -1,3 +1,5 @@
+BEGIN;
+
 /*
   # Initial database schema
 
@@ -12,6 +14,7 @@
     - Add policies for authenticated users to manage their own data
 */
 
+-- First create all tables
 -- Create profiles table
 CREATE TABLE IF NOT EXISTS profiles (
   id UUID PRIMARY KEY REFERENCES auth.users ON DELETE CASCADE,
@@ -22,20 +25,6 @@ CREATE TABLE IF NOT EXISTS profiles (
   created_at TIMESTAMPTZ DEFAULT now(),
   last_seen TIMESTAMPTZ
 );
-
-ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can read all profiles"
-  ON profiles
-  FOR SELECT
-  TO authenticated
-  USING (true);
-
-CREATE POLICY "Users can update their own profile"
-  ON profiles
-  FOR UPDATE
-  TO authenticated
-  USING (auth.uid() = id);
 
 -- Create chats table
 CREATE TABLE IF NOT EXISTS chats (
@@ -51,38 +40,6 @@ CREATE TABLE IF NOT EXISTS chats (
   last_message_at TIMESTAMPTZ
 );
 
-ALTER TABLE chats ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Users can create chats"
-  ON chats
-  FOR INSERT
-  TO authenticated
-  WITH CHECK (true);
-
-CREATE POLICY "Users can read chats they participate in"
-  ON chats
-  FOR SELECT
-  TO authenticated
-  USING (
-    EXISTS (
-      SELECT 1 FROM chat_participants
-      WHERE chat_participants.chat_id = chats.id
-      AND chat_participants.user_id = auth.uid()
-    )
-  );
-
-CREATE POLICY "Users can update chats they participate in"
-  ON chats
-  FOR UPDATE
-  TO authenticated
-  USING (
-    EXISTS (
-      SELECT 1 FROM chat_participants
-      WHERE chat_participants.chat_id = chats.id
-      AND chat_participants.user_id = auth.uid()
-    )
-  );
-
 -- Create chat participants table
 CREATE TABLE IF NOT EXISTS chat_participants (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -95,6 +52,56 @@ CREATE TABLE IF NOT EXISTS chat_participants (
   UNIQUE(chat_id, user_id)
 );
 
+-- Create messages table
+CREATE TABLE IF NOT EXISTS messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  chat_id UUID REFERENCES chats(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  content TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  is_read BOOLEAN DEFAULT false,
+  read_at TIMESTAMPTZ,
+  type TEXT DEFAULT 'text'
+);
+
+-- Now add RLS and policies to all tables
+-- Profiles RLS and policies
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can read all profiles"
+  ON profiles
+  FOR SELECT
+  TO authenticated
+  USING (true);
+
+CREATE POLICY "Users can update their own profile"
+  ON profiles
+  FOR UPDATE
+  TO authenticated
+  USING (auth.uid() = id);
+
+-- Chats RLS and policies
+ALTER TABLE chats ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can create chats"
+  ON chats
+  FOR INSERT
+  TO authenticated
+  WITH CHECK (true);
+
+CREATE POLICY "Users can read chats they created"
+  ON chats
+  FOR SELECT
+  TO authenticated
+  USING (created_by = auth.uid());
+
+CREATE POLICY "Users can update chats they created"
+  ON chats
+  FOR UPDATE
+  TO authenticated
+  USING (created_by = auth.uid());
+
+-- Chat participants RLS and policies
 ALTER TABLE chat_participants ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Users can add participants to chats they created"
@@ -109,15 +116,21 @@ CREATE POLICY "Users can add participants to chats they created"
     )
   );
 
-CREATE POLICY "Users can read participants of chats they participate in"
+CREATE POLICY "Users can read their own participation records"
+  ON chat_participants
+  FOR SELECT
+  TO authenticated
+  USING (user_id = auth.uid());
+
+CREATE POLICY "Users can read participants of chats they created"
   ON chat_participants
   FOR SELECT
   TO authenticated
   USING (
     EXISTS (
-      SELECT 1 FROM chat_participants AS cp
-      WHERE cp.chat_id = chat_participants.chat_id
-      AND cp.user_id = auth.uid()
+      SELECT 1 FROM chats
+      WHERE chats.id = chat_participants.chat_id
+      AND chats.created_by = auth.uid()
     )
   );
 
@@ -127,41 +140,30 @@ CREATE POLICY "Users can update their own participation"
   TO authenticated
   USING (user_id = auth.uid());
 
--- Create messages table
-CREATE TABLE IF NOT EXISTS messages (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  chat_id UUID REFERENCES chats(id) ON DELETE CASCADE,
-  user_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
-  content TEXT NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT now(),
-  is_read BOOLEAN DEFAULT false,
-  read_at TIMESTAMPTZ,
-  type TEXT DEFAULT 'text'
-);
-
+-- Messages RLS and policies
 ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can send messages to chats they participate in"
+CREATE POLICY "Users can send messages to any chat"
   ON messages
   FOR INSERT
   TO authenticated
-  WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM chat_participants
-      WHERE chat_participants.chat_id = messages.chat_id
-      AND chat_participants.user_id = auth.uid()
-    )
-  );
+  WITH CHECK (user_id = auth.uid());
 
-CREATE POLICY "Users can read messages in chats they participate in"
+CREATE POLICY "Users can read messages they sent"
+  ON messages
+  FOR SELECT
+  TO authenticated
+  USING (user_id = auth.uid());
+
+CREATE POLICY "Users can read messages in chats they created"
   ON messages
   FOR SELECT
   TO authenticated
   USING (
     EXISTS (
-      SELECT 1 FROM chat_participants
-      WHERE chat_participants.chat_id = messages.chat_id
-      AND chat_participants.user_id = auth.uid()
+      SELECT 1 FROM chats
+      WHERE chats.id = messages.chat_id
+      AND chats.created_by = auth.uid()
     )
   );
 
@@ -187,14 +189,13 @@ AFTER INSERT ON messages
 FOR EACH ROW
 EXECUTE FUNCTION update_last_message_timestamp();
 
--- Create functions for realtime subscriptions
-BEGIN;
-  -- Enable realtime for all tables
-  ALTER PUBLICATION supabase_realtime ADD TABLE chats, chat_participants, messages, profiles;
+-- Enable realtime for all tables
+ALTER PUBLICATION supabase_realtime ADD TABLE chats, chat_participants, messages, profiles;
 
-  -- Configure the realtime payload
-  ALTER TABLE chats REPLICA IDENTITY FULL;
-  ALTER TABLE chat_participants REPLICA IDENTITY FULL;
-  ALTER TABLE messages REPLICA IDENTITY FULL;
-  ALTER TABLE profiles REPLICA IDENTITY FULL;
+-- Configure the realtime payload
+ALTER TABLE chats REPLICA IDENTITY FULL;
+ALTER TABLE chat_participants REPLICA IDENTITY FULL;
+ALTER TABLE messages REPLICA IDENTITY FULL;
+ALTER TABLE profiles REPLICA IDENTITY FULL;
+
 COMMIT;
