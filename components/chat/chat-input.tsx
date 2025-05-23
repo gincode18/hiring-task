@@ -17,6 +17,15 @@ import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/components/providers/auth-provider";
 import { useToast } from "@/hooks/use-toast";
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+} from "@/components/ui/select";
 
 interface ChatInputProps {
   chatId: string;
@@ -126,7 +135,7 @@ export function ChatInput({ chatId }: ChatInputProps) {
           </Button>
         </div>
 
-        <div className="flex justify-between">
+        <div className="flex justify-between mt-2">
           {/* Top row of action icons */}
           <div className="flex  space-x-2 items-center">
             <Button
@@ -182,13 +191,37 @@ export function ChatInput({ chatId }: ChatInputProps) {
 
           {/* Bottom branding */}
           <div className="flex justify-end">
-            <div className="flex items-center space-x-1">
-              <div className="h-5 w-5 rounded-full bg-green-600 flex items-center justify-center">
-                <span className="text-white text-xs font-bold">P</span>
-              </div>
-              <span className="text-sm font-medium text-gray-700">
-                Periskope
-              </span>
+            <div className="flex items-center space-x-2">
+              <Select defaultValue="periskope">
+                <SelectTrigger className="w-[180px] h-7">
+                  <SelectValue placeholder="Select platform" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectLabel>Platforms</SelectLabel>
+                    <SelectItem value="periskope">
+                      <div className="flex items-center space-x-1">
+                        <div className="h-5 w-5 rounded-full bg-green-600 flex items-center justify-center">
+                          <span className="text-white text-xs font-bold">
+                            P
+                          </span>
+                        </div>
+                        <span>Periskope</span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="whatsapp">
+                      <div className="flex items-center space-x-1">
+                        <div className="h-5 w-5 rounded-full bg-green-600 flex items-center justify-center">
+                          <span className="text-white text-xs font-bold">
+                            W
+                          </span>
+                        </div>
+                        <span>WhatsApp</span>
+                      </div>
+                    </SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </div>
