@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { Filter, Search, Plus } from "lucide-react";
+import { AiOutlineFilter, AiOutlineSearch, AiOutlinePlus } from "react-icons/ai";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { ChatItem } from "@/components/chat/chat-item";
 import { NewChatDialog } from "@/components/chat/new-chat-dialog";
 import { useAuth } from "@/components/providers/auth-provider";
@@ -25,6 +26,8 @@ export function ChatSidebar() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("");
   const [showNewChatDialog, setShowNewChatDialog] = useState(false);
+  const [showFilterDialog, setShowFilterDialog] = useState(false);
+  const [isSearchExpanded, setIsSearchExpanded] = useState(false);
 
   const fetchChats = useCallback(async () => {
     if (!user) return;
@@ -112,88 +115,147 @@ export function ChatSidebar() {
   });
 
   return (
-    <div className="flex h-full w-80 flex-col border-r">
-      <div className="flex items-center justify-between border-b p-3">
+    <div className="flex h-full w-80 flex-col bg-white border-r border-gray-100 relative">
+      {/* Header with Custom Filter, Save, Search, and Filtered */}
+      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100">
         <div className="flex items-center space-x-2">
+          <Dialog open={showFilterDialog} onOpenChange={setShowFilterDialog}>
+            <DialogTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="px-2 py-1 text-xs font-medium text-green-600 hover:bg-green-50 flex items-center gap-1 h-7"
+              >
+                <AiOutlineFilter className="h-3 w-3" />
+                Custom filter
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[425px]">
+              <DialogHeader>
+                <DialogTitle>Custom Filters</DialogTitle>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                <div className="flex flex-wrap gap-2">
+                  <Badge
+                    variant={!filter ? "default" : "outline"}
+                    className="cursor-pointer"
+                    onClick={() => {
+                      setFilter("");
+                      setShowFilterDialog(false);
+                    }}
+                  >
+                    All
+                  </Badge>
+                  <Badge
+                    variant={filter === "demo" ? "default" : "outline"}
+                    className="cursor-pointer"
+                    onClick={() => {
+                      setFilter("demo");
+                      setShowFilterDialog(false);
+                    }}
+                  >
+                    Demo
+                  </Badge>
+                  <Badge
+                    variant={filter === "internal" ? "default" : "outline"}
+                    className="cursor-pointer"
+                    onClick={() => {
+                      setFilter("internal");
+                      setShowFilterDialog(false);
+                    }}
+                  >
+                    Internal
+                  </Badge>
+                  <Badge
+                    variant={filter === "signup" ? "default" : "outline"}
+                    className="cursor-pointer"
+                    onClick={() => {
+                      setFilter("signup");
+                      setShowFilterDialog(false);
+                    }}
+                  >
+                    Signup
+                  </Badge>
+                  <Badge
+                    variant={filter === "content" ? "default" : "outline"}
+                    className="cursor-pointer"
+                    onClick={() => {
+                      setFilter("content");
+                      setShowFilterDialog(false);
+                    }}
+                  >
+                    Content
+                  </Badge>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+          
           <Button
             variant="ghost"
             size="sm"
-            className="px-2 text-xs font-medium text-green-600"
-          >
-            <Filter className="mr-1 h-3 w-3" />
-            Custom filter
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="px-2 text-xs font-medium text-gray-500"
+            className="px-2 py-1 text-xs font-medium text-gray-500 hover:bg-gray-50 h-7"
           >
             Save
           </Button>
         </div>
-      </div>
-      <div className="flex items-center border-b p-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-          <Input
-            placeholder="Search"
-            className="pl-8"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+
+        <div className="flex items-center space-x-2">
+          <div className={`relative transition-all duration-200 ${
+            isSearchExpanded ? "w-40" : "w-8"
+          }`}>
+            {isSearchExpanded ? (
+              <Input
+                placeholder="Search"
+                className="h-7 text-xs pl-8 pr-3 border-gray-200 focus:border-green-300 focus:ring-green-200"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onBlur={() => !search && setIsSearchExpanded(false)}
+                autoFocus
+              />
+            ) : null}
+            <AiOutlineSearch 
+              className={`h-4 w-4 text-gray-400 cursor-pointer transition-all duration-200 ${
+                isSearchExpanded 
+                  ? "absolute left-2 top-1/2 -translate-y-1/2" 
+                  : "hover:text-gray-600"
+              }`}
+              onClick={() => setIsSearchExpanded(true)}
+            />
+          </div>
+
+          {filter && (
+            <Badge variant="secondary" className="text-xs bg-green-100 text-green-700 h-6 px-2">
+              Filtered
+            </Badge>
+          )}
+
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-gray-400 hover:bg-gray-50 hover:text-gray-600"
+            onClick={() => setShowFilterDialog(true)}
+          >
+            <AiOutlineFilter className="h-4 w-4" />
+          </Button>
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="ml-2 shrink-0 text-gray-500"
-        >
-          <Filter className="h-4 w-4" />
-        </Button>
       </div>
-      <div className="flex items-center justify-between border-b px-3 py-2">
-        <div className="flex space-x-1">
-          <Badge
-            variant={!filter ? "default" : "outline"}
-            className="cursor-pointer bg-green-600 hover:bg-green-700"
-            onClick={() => setFilter("")}
-          >
-            All
-          </Badge>
-          <Badge
-            variant={filter === "demo" ? "default" : "outline"}
-            className="cursor-pointer bg-green-600 hover:bg-green-700"
-            onClick={() => setFilter("demo")}
-          >
-            Demo
-          </Badge>
-          <Badge
-            variant={filter === "internal" ? "default" : "outline"}
-            className="cursor-pointer bg-green-600 hover:bg-green-700"
-            onClick={() => setFilter("internal")}
-          >
-            Internal
-          </Badge>
-          <Badge
-            variant={filter === "signup" ? "default" : "outline"}
-            className="cursor-pointer bg-green-600 hover:bg-green-700"
-            onClick={() => setFilter("signup")}
-          >
-            Signup
-          </Badge>
-        </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="shrink-0 text-gray-500"
-          onClick={() => setShowNewChatDialog(true)}
-        >
-          <Plus className="h-4 w-4" />
-        </Button>
-      </div>
+
+      {/* Chat List */}
       <div className="flex-1 overflow-y-auto">
         {filteredChats.map((chat) => (
           <ChatItem key={chat.id} chat={chat} />
         ))}
+      </div>
+
+      {/* Floating New Chat Button */}
+      <div className="absolute bottom-4 right-4">
+        <Button
+          onClick={() => setShowNewChatDialog(true)}
+          className="h-12 w-12 rounded-full bg-green-500 hover:bg-green-600 shadow-lg flex items-center justify-center p-0"
+        >
+          <AiOutlinePlus className="h-6 w-6 text-white" />
+        </Button>
       </div>
 
       <NewChatDialog 

@@ -6,6 +6,7 @@ import { useAuth } from "@/components/providers/auth-provider";
 import { MessageBubble } from "@/components/chat/message-bubble";
 import { Database } from "@/lib/database.types";
 import { Spinner } from "@/components/ui/spinner";
+import { format, isToday, isYesterday, isSameDay } from "date-fns";
 
 type Message = Database["public"]["Tables"]["messages"]["Row"] & {
   profiles: Database["public"]["Tables"]["profiles"]["Row"];
@@ -13,6 +14,23 @@ type Message = Database["public"]["Tables"]["messages"]["Row"] & {
 
 interface ChatMessagesProps {
   chatId: string;
+}
+
+// Date separator component
+function DateSeparator({ date }: { date: Date }) {
+  const formatDate = (date: Date) => {
+    if (isToday(date)) return "Today";
+    if (isYesterday(date)) return "Yesterday";
+    return format(date, "dd-MM-yyyy");
+  };
+
+  return (
+    <div className="flex justify-center my-4">
+      <div className="bg-gray-100 text-gray-600 text-xs px-3 py-1 rounded-full">
+        {formatDate(date)}
+      </div>
+    </div>
+  );
 }
 
 export function ChatMessages({ chatId }: ChatMessagesProps) {
@@ -159,8 +177,39 @@ export function ChatMessages({ chatId }: ChatMessagesProps) {
     return () => clearTimeout(timeoutId);
   }, [messages, user]);
 
+  // Group messages by date and render with separators
+  const renderMessagesWithDateSeparators = () => {
+    if (messages.length === 0) return null;
+
+    const elements: React.ReactElement[] = [];
+    let lastDate: Date | null = null;
+
+    messages.forEach((message, index) => {
+      const messageDate = new Date(message.created_at);
+      
+      // Add date separator if this is a new day
+      if (!lastDate || !isSameDay(messageDate, lastDate)) {
+        elements.push(
+          <DateSeparator key={`date-${messageDate.toISOString()}`} date={messageDate} />
+        );
+        lastDate = messageDate;
+      }
+
+      // Add the message
+      elements.push(
+        <MessageBubble
+          key={message.id}
+          message={message}
+          isOwn={message.user_id === user?.id}
+        />
+      );
+    });
+
+    return elements;
+  };
+
   return (
-    <div className="flex flex-1 flex-col overflow-y-auto bg-gray-50 p-4">
+    <div className="flex flex-1 flex-col overflow-y-auto bg-gray-50 px-4 py-6">
       {loading ? (
         <div className="flex h-full items-center justify-center">
           <Spinner />
@@ -172,13 +221,7 @@ export function ChatMessages({ chatId }: ChatMessagesProps) {
         </div>
       ) : (
         <>
-          {messages.map((message) => (
-            <MessageBubble
-              key={message.id}
-              message={message}
-              isOwn={message.user_id === user?.id}
-            />
-          ))}
+          {renderMessagesWithDateSeparators()}
           <div ref={messagesEndRef} />
         </>
       )}
