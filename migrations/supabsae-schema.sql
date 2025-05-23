@@ -64,6 +64,18 @@ CREATE TABLE IF NOT EXISTS messages (
   type TEXT DEFAULT 'text'
 );
 
+-- Create a security definer function to check if a user participates in a chat
+-- This function can safely check chat_participants without triggering RLS recursion
+CREATE OR REPLACE FUNCTION user_participates_in_chat(chat_uuid UUID, user_uuid UUID)
+RETURNS BOOLEAN AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 FROM chat_participants 
+    WHERE chat_id = chat_uuid AND user_id = user_uuid
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 -- Now add RLS and policies to all tables
 -- Profiles RLS and policies
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
@@ -95,22 +107,26 @@ CREATE POLICY "Users can create chats"
   TO authenticated
   WITH CHECK (true);
 
-CREATE POLICY "Users can read chats they created"
+CREATE POLICY "Users can read chats they participate in or created"
   ON chats
   FOR SELECT
   TO authenticated
-  USING (created_by = auth.uid());
+  USING (
+    created_by = auth.uid() OR user_participates_in_chat(id, auth.uid())
+  );
 
-CREATE POLICY "Users can update chats they created"
+CREATE POLICY "Users can update chats they participate in or created"
   ON chats
   FOR UPDATE
   TO authenticated
-  USING (created_by = auth.uid());
+  USING (
+    created_by = auth.uid() OR user_participates_in_chat(id, auth.uid())
+  );
 
 -- Chat participants RLS and policies
 ALTER TABLE chat_participants ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can add participants to chats they created"
+CREATE POLICY "Users can add participants to chats they created or participate in"
   ON chat_participants
   FOR INSERT
   TO authenticated
@@ -118,7 +134,7 @@ CREATE POLICY "Users can add participants to chats they created"
     EXISTS (
       SELECT 1 FROM chats
       WHERE chats.id = chat_participants.chat_id
-      AND chats.created_by = auth.uid()
+      AND (chats.created_by = auth.uid() OR user_participates_in_chat(chats.id, auth.uid()))
     )
   );
 
@@ -128,11 +144,12 @@ CREATE POLICY "Users can read their own participation records"
   TO authenticated
   USING (user_id = auth.uid());
 
-CREATE POLICY "Users can read participants of chats they created"
+CREATE POLICY "Users can read participants of chats they participate in or created"
   ON chat_participants
   FOR SELECT
   TO authenticated
   USING (
+    user_id = auth.uid() OR 
     EXISTS (
       SELECT 1 FROM chats
       WHERE chats.id = chat_participants.chat_id
@@ -149,28 +166,20 @@ CREATE POLICY "Users can update their own participation"
 -- Messages RLS and policies
 ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Users can send messages to any chat"
+CREATE POLICY "Users can send messages to chats they participate in"
   ON messages
   FOR INSERT
   TO authenticated
-  WITH CHECK (user_id = auth.uid());
+  WITH CHECK (
+    user_id = auth.uid() AND user_participates_in_chat(chat_id, auth.uid())
+  );
 
-CREATE POLICY "Users can read messages they sent"
-  ON messages
-  FOR SELECT
-  TO authenticated
-  USING (user_id = auth.uid());
-
-CREATE POLICY "Users can read messages in chats they created"
+CREATE POLICY "Users can read messages in chats they participate in"
   ON messages
   FOR SELECT
   TO authenticated
   USING (
-    EXISTS (
-      SELECT 1 FROM chats
-      WHERE chats.id = messages.chat_id
-      AND chats.created_by = auth.uid()
-    )
+    user_id = auth.uid() OR user_participates_in_chat(chat_id, auth.uid())
   );
 
 CREATE POLICY "Users can update their own messages"
@@ -178,6 +187,17 @@ CREATE POLICY "Users can update their own messages"
   FOR UPDATE
   TO authenticated
   USING (user_id = auth.uid());
+
+CREATE POLICY "Users can mark messages as read in chats they participate in"
+  ON messages
+  FOR UPDATE
+  TO authenticated
+  USING (
+    user_participates_in_chat(chat_id, auth.uid())
+  )
+  WITH CHECK (
+    user_participates_in_chat(chat_id, auth.uid())
+  );
 
 -- Create function to update last_message_at in chat when a message is inserted
 CREATE OR REPLACE FUNCTION update_last_message_timestamp()

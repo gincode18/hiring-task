@@ -40,7 +40,7 @@ export function ChatMessages({ chatId }: ChatMessagesProps) {
 
     fetchMessages();
 
-    // Subscribe to new messages
+    // Subscribe to new messages and message updates
     const subscription = supabase
       .channel(`messages:${chatId}`)
       .on(
@@ -62,6 +62,32 @@ export function ChatMessages({ chatId }: ChatMessagesProps) {
           if (!error && data) {
             setMessages((current) => [...current, data as Message]);
           }
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "messages",
+          filter: `chat_id=eq.${chatId}`,
+        },
+        (payload) => {
+          // Update existing message in the list
+          console.log("Message updated:", payload.new);
+          setMessages((current) =>
+            current.map((message) => {
+              if (message.id === payload.new.id) {
+                return {
+                  ...message,
+                  is_read: payload.new.is_read,
+                  read_at: payload.new.read_at,
+                  content: payload.new.content,
+                };
+              }
+              return message;
+            })
+          );
         }
       )
       .subscribe();
@@ -87,21 +113,50 @@ export function ChatMessages({ chatId }: ChatMessagesProps) {
       );
 
       if (unreadMessages.length > 0) {
-        const { error } = await supabase
+        console.log(`Marking ${unreadMessages.length} messages as read...`);
+        
+        const { data, error } = await supabase
           .from("messages")
           .update({ is_read: true, read_at: new Date().toISOString() })
           .in(
             "id",
             unreadMessages.map((message) => message.id)
-          );
+          )
+          .select("id, is_read, read_at");
 
         if (error) {
           console.error("Error marking messages as read:", error);
+          console.error("Error details:", {
+            code: error.code,
+            message: error.message,
+            details: error.details,
+            hint: error.hint
+          });
+        } else {
+          console.log("Successfully marked messages as read:", data);
+          
+          // Update local state to reflect the changes
+          setMessages(currentMessages => 
+            currentMessages.map(message => {
+              const updatedMessage = data?.find(d => d.id === message.id);
+              if (updatedMessage) {
+                return {
+                  ...message,
+                  is_read: updatedMessage.is_read,
+                  read_at: updatedMessage.read_at
+                };
+              }
+              return message;
+            })
+          );
         }
       }
     };
 
-    markAsRead();
+    // Add a small delay to avoid marking messages as read too quickly
+    const timeoutId = setTimeout(markAsRead, 1000);
+    
+    return () => clearTimeout(timeoutId);
   }, [messages, user]);
 
   return (
