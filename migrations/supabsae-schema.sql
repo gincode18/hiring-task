@@ -74,6 +74,12 @@ CREATE POLICY "Users can read all profiles"
   TO authenticated
   USING (true);
 
+CREATE POLICY "Users can create their own profile"
+  ON profiles
+  FOR INSERT
+  TO authenticated
+  WITH CHECK (auth.uid() = id);
+
 CREATE POLICY "Users can update their own profile"
   ON profiles
   FOR UPDATE

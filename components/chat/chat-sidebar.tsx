@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Filter, Search, Plus } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ChatItem } from "@/components/chat/chat-item";
+import { NewChatDialog } from "@/components/chat/new-chat-dialog";
 import { useAuth } from "@/components/providers/auth-provider";
 import { supabase } from "@/lib/supabase";
 import { Database } from "@/lib/database.types";
@@ -23,11 +24,11 @@ export function ChatSidebar() {
   const [chats, setChats] = useState<ChatWithParticipants[]>([]);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState("");
+  const [showNewChatDialog, setShowNewChatDialog] = useState(false);
 
-  useEffect(() => {
+  const fetchChats = useCallback(async () => {
     if (!user) return;
 
-    const fetchChats = async () => {
       const { data, error } = await supabase
         .from("chats")
         .select(`
@@ -44,8 +45,9 @@ export function ChatSidebar() {
       }
 
       setChats(data as ChatWithParticipants[]);
-    };
+  }, [user]);
 
+  useEffect(() => {
     fetchChats();
 
     // Subscribe to new chats
@@ -57,7 +59,7 @@ export function ChatSidebar() {
           event: "*",
           schema: "public",
           table: "chats",
-          filter: `chat_participants.user_id=eq.${user.id}`,
+          filter: `chat_participants.user_id=eq.${user?.id}`,
         },
         () => {
           fetchChats();
@@ -85,7 +87,7 @@ export function ChatSidebar() {
       chatSubscription.unsubscribe();
       messageSubscription.unsubscribe();
     };
-  }, [user]);
+  }, [fetchChats]);
 
   const filteredChats = chats.filter((chat) => {
     // Filter by search term
@@ -183,6 +185,7 @@ export function ChatSidebar() {
           variant="ghost"
           size="icon"
           className="shrink-0 text-gray-500"
+          onClick={() => setShowNewChatDialog(true)}
         >
           <Plus className="h-4 w-4" />
         </Button>
@@ -192,6 +195,12 @@ export function ChatSidebar() {
           <ChatItem key={chat.id} chat={chat} />
         ))}
       </div>
+
+      <NewChatDialog 
+        open={showNewChatDialog} 
+        onOpenChange={setShowNewChatDialog}
+        onChatCreated={fetchChats}
+      />
     </div>
   );
 }

@@ -22,6 +22,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
 
+  const createProfile = async (user: User, fullName?: string) => {
+    try {
+      // Check if profile already exists
+      const { data: existingProfile } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("id", user.id)
+        .single();
+
+      if (!existingProfile) {
+        const { error: profileError } = await supabase
+          .from("profiles")
+          .insert({
+            id: user.id,
+            email: user.email || '',
+            full_name: fullName || user.user_metadata?.full_name || 'User',
+            created_at: new Date().toISOString(),
+          });
+
+        if (profileError) {
+          console.error("Error creating profile:", profileError);
+          return false;
+        }
+        console.log("Profile created successfully for user:", user.id);
+        return true;
+      }
+      return true;
+    } catch (error) {
+      console.error("Error in createProfile:", error);
+      return false;
+    }
+  };
+
   useEffect(() => {
     const fetchSession = async () => {
       const { data, error } = await supabase.auth.getSession();
@@ -38,9 +71,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     fetchSession();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
+      async (event, session) => {
+        console.log("Auth event:", event, "Session:", !!session);
         setSession(session);
         setUser(session?.user || null);
+        
+        // Handle profile creation for signed in users
+        if (event === 'SIGNED_IN' && session?.user) {
+          await createProfile(session.user);
+        }
+        
         setIsLoading(false);
       }
     );
@@ -52,41 +92,61 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = async (email: string, password: string) => {
     setIsLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-    if (error) {
+      if (error) {
+        throw error;
+      }
+
+      // Don't navigate immediately, let the auth state change handle it
+      if (data.session) {
+        router.push("/chat");
+      }
+    } catch (error) {
       throw error;
+    } finally {
+      setIsLoading(false);
     }
-    
-    router.push("/chat");
-    setIsLoading(false);
   };
 
   const signUp = async (email: string, password: string, fullName: string) => {
     setIsLoading(true);
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-    });
-
-    if (error) {
-      throw error;
-    }
-
-    if (data.user) {
-      await supabase.from("profiles").insert({
-        id: data.user.id,
+    
+    try {
+      const { data, error } = await supabase.auth.signUp({
         email,
-        full_name: fullName,
-        created_at: new Date().toISOString(),
+        password,
+        options: {
+          data: {
+            full_name: fullName,
+          }
+        }
       });
-    }
 
-    router.push("/login");
-    setIsLoading(false);
+      if (error) {
+        throw error;
+      }
+
+      // If user is immediately available (no email confirmation required)
+      if (data.user && data.session) {
+        // Wait a bit for the session to be established
+        setTimeout(async () => {
+          await createProfile(data.user!, fullName);
+        }, 1000);
+        router.push("/chat");
+      } else {
+        router.push("/login");
+      }
+
+    } catch (error) {
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const signOut = async () => {
