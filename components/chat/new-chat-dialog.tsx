@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Users, MessageSquare, X, Tag } from "lucide-react";
+import { Search, Users, MessageSquare, X, Tag, User } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -11,8 +11,11 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
+import { Card, CardContent } from "@/components/ui/card";
 import { useAuth } from "@/components/providers/auth-provider";
 import { supabase } from "@/lib/supabase";
 import { Database } from "@/lib/database.types";
@@ -38,6 +41,7 @@ export function NewChatDialog({ open, onOpenChange, onChatCreated }: NewChatDial
   const [customTag, setCustomTag] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [chatType, setChatType] = useState<"dm" | "group">("dm");
 
   // Common predefined tags
   const commonTags = ["demo", "internal", "signup", "content", "support", "sales", "marketing"];
@@ -69,6 +73,14 @@ export function NewChatDialog({ open, onOpenChange, onChatCreated }: NewChatDial
     fetchUsers();
   }, [open, user, toast]);
 
+  // Reset selections when chat type changes
+  useEffect(() => {
+    if (chatType === "dm" && selectedUsers.length > 1) {
+      setSelectedUsers([selectedUsers[0]]);
+    }
+    setChatName("");
+  }, [chatType]);
+
   const filteredUsers = users.filter((u) =>
     u.full_name.toLowerCase().includes(search.toLowerCase()) ||
     u.email.toLowerCase().includes(search.toLowerCase())
@@ -80,7 +92,13 @@ export function NewChatDialog({ open, onOpenChange, onChatCreated }: NewChatDial
       if (isSelected) {
         return prev.filter(u => u.id !== user.id);
       } else {
-        return [...prev, user];
+        if (chatType === "dm") {
+          // For DM, only allow one user
+          return [user];
+        } else {
+          // For group, allow multiple
+          return [...prev, user];
+        }
       }
     });
   };
@@ -123,16 +141,17 @@ export function NewChatDialog({ open, onOpenChange, onChatCreated }: NewChatDial
 
     setIsCreating(true);
     try {
-      const isGroupChat = selectedUsers.length > 1;
-      const chatType = isGroupChat ? "group" : "direct";
-      const finalChatName = isGroupChat ? (chatName || `Group with ${selectedUsers.map(u => u.full_name).join(", ")}`) : null;
+      const isGroupChat = chatType === "group";
+      const finalChatName = isGroupChat 
+        ? (chatName || `Group with ${selectedUsers.map(u => u.full_name).join(", ")}`)
+        : null; // For DM, don't set a name - it will be derived from participants
 
       // Create the chat
       const { data: chat, error: chatError } = await supabase
         .from("chats")
         .insert({
           name: finalChatName,
-          type: chatType,
+          type: chatType === "dm" ? "direct" : "group",
           created_by: user.id,
           tags: selectedTags,
         })
@@ -177,6 +196,7 @@ export function NewChatDialog({ open, onOpenChange, onChatCreated }: NewChatDial
       setSelectedTags([]);
       setCustomTag("");
       setSearch("");
+      setChatType("dm");
 
     } catch (error) {
       console.error("Error creating chat:", error);
@@ -201,7 +221,7 @@ export function NewChatDialog({ open, onOpenChange, onChatCreated }: NewChatDial
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <MessageSquare className="h-5 w-5" />
@@ -209,62 +229,215 @@ export function NewChatDialog({ open, onOpenChange, onChatCreated }: NewChatDial
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4">
-          {/* Search users */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-            <Input
-              placeholder="Search users..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-10"
-            />
+        <div className="space-y-6">
+          {/* Chat Type Selection */}
+          <div className="space-y-3">
+            <Label className="text-sm font-medium">Choose conversation type:</Label>
+            <RadioGroup 
+              value={chatType} 
+              onValueChange={(value: "dm" | "group") => setChatType(value)}
+              className="flex gap-4"
+            >
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="dm" id="dm" />
+                <Label htmlFor="dm" className="flex items-center gap-2 cursor-pointer">
+                  <User className="h-4 w-4" />
+                  Direct Message
+                </Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="group" id="group" />
+                <Label htmlFor="group" className="flex items-center gap-2 cursor-pointer">
+                  <Users className="h-4 w-4" />
+                  Group Chat
+                </Label>
+              </div>
+            </RadioGroup>
           </div>
 
-          {/* Selected users */}
+          {/* Selected User/Users Display */}
           {selectedUsers.length > 0 && (
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Selected users:</label>
-              <div className="flex flex-wrap gap-2">
-                {selectedUsers.map((user) => (
-                  <Badge
-                    key={user.id}
-                    variant="outline"
-                    className="flex items-center gap-1 pr-1"
-                  >
-                    <span className="truncate max-w-[100px]">{user.full_name}</span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-auto p-0.5 hover:bg-destructive hover:text-destructive-foreground"
-                      onClick={() => removeSelectedUser(user.id)}
-                    >
-                      <X className="h-3 w-3" />
-                    </Button>
-                  </Badge>
-                ))}
-              </div>
+            <div className="space-y-3">
+              {chatType === "dm" && selectedUsers.length === 1 ? (
+                // DM: Show selected user prominently
+                <Card className="border-green-200 bg-green-50">
+                  <CardContent className="p-4">
+                    <div className="flex items-center gap-3">
+                      <Avatar className="h-12 w-12">
+                        {selectedUsers[0].avatar_url && (
+                          <AvatarImage 
+                            src={selectedUsers[0].avatar_url} 
+                            alt={selectedUsers[0].full_name}
+                            className="object-cover"
+                          />
+                        )}
+                        <AvatarFallback className="text-lg bg-green-100 text-green-700">
+                          {getUserInitials(selectedUsers[0].full_name)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1">
+                        <div className="font-semibold text-green-900">
+                          {selectedUsers[0].full_name}
+                        </div>
+                        <div className="text-sm text-green-700">
+                          {selectedUsers[0].email}
+                        </div>
+                        <div className="text-xs text-green-600 mt-1">
+                          Direct message with this person
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 w-8 p-0 hover:bg-green-200"
+                        onClick={() => removeSelectedUser(selectedUsers[0].id)}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : (
+                // Group: Show multiple selected users
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">
+                    Selected members ({selectedUsers.length}):
+                  </Label>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedUsers.map((user) => (
+                      <Card key={user.id} className="border-blue-200">
+                        <CardContent className="p-2">
+                          <div className="flex items-center gap-2">
+                            <Avatar className="h-6 w-6">
+                              {user.avatar_url && (
+                                <AvatarImage 
+                                  src={user.avatar_url} 
+                                  alt={user.full_name}
+                                  className="object-cover"
+                                />
+                              )}
+                              <AvatarFallback className="text-xs">
+                                {getUserInitials(user.full_name)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="text-sm font-medium truncate max-w-[100px]">
+                              {user.full_name}
+                            </span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-4 w-4 p-0 hover:bg-red-100"
+                              onClick={() => removeSelectedUser(user.id)}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
-          {/* Group chat name (only show if multiple users selected) */}
-          {selectedUsers.length > 1 && (
+          {/* Group chat name (only show for group chats) */}
+          {chatType === "group" && (
             <div className="space-y-2">
-              <label className="text-sm font-medium">Group name (optional):</label>
+              <Label className="text-sm font-medium">
+                Group name {selectedUsers.length > 0 ? "(optional)" : ""}:
+              </Label>
               <Input
                 placeholder="Enter group name..."
                 value={chatName}
                 onChange={(e) => setChatName(e.target.value)}
               />
+              {selectedUsers.length > 0 && !chatName && (
+                <p className="text-xs text-gray-500">
+                  Default: Group with {selectedUsers.map(u => u.full_name).join(", ")}
+                </p>
+              )}
             </div>
           )}
 
+          {/* Search users */}
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">
+              {chatType === "dm" ? "Choose person to chat with:" : "Add members to group:"}
+            </Label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <Input
+                placeholder="Search users..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+          </div>
+
+          {/* Users list */}
+          <div className="max-h-48 overflow-y-auto space-y-1 border rounded-md p-2">
+            {isLoading ? (
+              <div className="text-center text-gray-500 py-4">Loading users...</div>
+            ) : filteredUsers.length === 0 ? (
+              <div className="text-center text-gray-500 py-4">
+                {search ? "No users found" : "No other users available"}
+              </div>
+            ) : (
+              filteredUsers.map((user) => {
+                const isSelected = selectedUsers.some(u => u.id === user.id);
+                const isDisabled = chatType === "dm" && selectedUsers.length > 0 && !isSelected;
+                
+                return (
+                  <div
+                    key={user.id}
+                    className={`flex items-center gap-3 p-2 rounded-md transition-colors ${
+                      isDisabled 
+                        ? "opacity-50 cursor-not-allowed" 
+                        : isSelected 
+                          ? "bg-green-50 border border-green-200 cursor-pointer" 
+                          : "hover:bg-gray-50 cursor-pointer"
+                    }`}
+                    onClick={() => !isDisabled && toggleUserSelection(user)}
+                  >
+                    <Avatar className="h-8 w-8">
+                      {user.avatar_url && (
+                        <AvatarImage 
+                          src={user.avatar_url} 
+                          alt={user.full_name}
+                          className="object-cover"
+                        />
+                      )}
+                      <AvatarFallback className="text-xs">
+                        {getUserInitials(user.full_name)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-sm truncate">
+                        {user.full_name}
+                      </div>
+                      <div className="text-xs text-gray-500 truncate">
+                        {user.email}
+                      </div>
+                    </div>
+                    {isSelected && (
+                      <div className="text-green-600">
+                        ✓
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+
           {/* Tags section */}
           <div className="space-y-3">
-            <label className="text-sm font-medium flex items-center gap-2">
+            <Label className="text-sm font-medium flex items-center gap-2">
               <Tag className="h-4 w-4" />
               Tags (optional)
-            </label>
+            </Label>
             
             {/* Selected tags */}
             {selectedTags.length > 0 && (
@@ -351,54 +524,6 @@ export function NewChatDialog({ open, onOpenChange, onChatCreated }: NewChatDial
             </div>
           </div>
 
-          {/* Users list */}
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Choose users to chat with:</label>
-            <div className="max-h-60 overflow-y-auto space-y-1 border rounded-md p-2">
-              {isLoading ? (
-                <div className="text-center text-gray-500 py-4">Loading users...</div>
-              ) : filteredUsers.length === 0 ? (
-                <div className="text-center text-gray-500 py-4">
-                  {search ? "No users found" : "No other users available"}
-                </div>
-              ) : (
-                filteredUsers.map((user) => {
-                  const isSelected = selectedUsers.some(u => u.id === user.id);
-                  return (
-                    <div
-                      key={user.id}
-                      className={`flex items-center gap-3 p-2 rounded-md cursor-pointer transition-colors ${
-                        isSelected 
-                          ? "bg-green-50 border border-green-200" 
-                          : "hover:bg-gray-50"
-                      }`}
-                      onClick={() => toggleUserSelection(user)}
-                    >
-                      <Avatar className="h-8 w-8">
-                        <AvatarFallback className="text-xs">
-                          {getUserInitials(user.full_name)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-sm truncate">
-                          {user.full_name}
-                        </div>
-                        <div className="text-xs text-gray-500 truncate">
-                          {user.email}
-                        </div>
-                      </div>
-                      {isSelected && (
-                        <div className="text-green-600">
-                          ✓
-                        </div>
-                      )}
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-
           {/* Action buttons */}
           <div className="flex justify-end gap-2 pt-4">
             <Button
@@ -413,7 +538,10 @@ export function NewChatDialog({ open, onOpenChange, onChatCreated }: NewChatDial
               disabled={selectedUsers.length === 0 || isCreating}
               className="bg-green-600 hover:bg-green-700"
             >
-              {isCreating ? "Creating..." : `Create ${selectedUsers.length > 1 ? "Group" : "Chat"}`}
+              {isCreating 
+                ? "Creating..." 
+                : `Create ${chatType === "dm" ? "Direct Message" : "Group Chat"}`
+              }
             </Button>
           </div>
         </div>

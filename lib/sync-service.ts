@@ -87,10 +87,9 @@ class SyncService {
         .from("chats")
         .select(`
           *,
-          chat_participants!inner(user_id, profiles(*)),
-          messages(*)
+          chat_participants(user_id, profiles(*))
         `)
-        .eq("chat_participants.user_id", userId)
+        .in("id", await this.getUserChatIds(userId))
         .order("last_message_at", { ascending: false });
 
       // Only fetch updated chats if not forcing full sync
@@ -279,10 +278,9 @@ class SyncService {
         .from("chats")
         .select(`
           *,
-          chat_participants!inner(user_id, profiles(*)),
-          messages(*)
+          chat_participants(user_id, profiles(*))
         `)
-        .eq("chat_participants.user_id", userId)
+        .in("id", await this.getUserChatIds(userId))
         .order("last_message_at", { ascending: false });
 
       if (error) {
@@ -313,10 +311,9 @@ class SyncService {
           .from("chats")
           .select(`
             *,
-            chat_participants!inner(user_id, profiles(*)),
-            messages(*)
+            chat_participants(user_id, profiles(*))
           `)
-          .eq("chat_participants.user_id", userId)
+          .in("id", await this.getUserChatIds(userId))
           .order("last_message_at", { ascending: false });
 
         if (supabaseError) {
@@ -511,6 +508,21 @@ class SyncService {
       // Fallback to regular cached method
       return this.getMessages(chatId);
     }
+  }
+
+  // Helper method to get chat IDs where user is a participant
+  private async getUserChatIds(userId: string): Promise<string[]> {
+    const { data: chatParticipants, error } = await supabase
+      .from("chat_participants")
+      .select("chat_id")
+      .eq("user_id", userId);
+
+    if (error) {
+      console.error("Error fetching user chat IDs:", error);
+      return [];
+    }
+
+    return chatParticipants.map(cp => cp.chat_id);
   }
 }
 

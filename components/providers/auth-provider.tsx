@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { Session, User } from "@supabase/supabase-js";
+import { userDataDAO } from "@/lib/user-data-dao";
 
 type AuthContextType = {
   user: User | null;
@@ -66,6 +67,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       setSession(data.session);
       setUser(data.session?.user || null);
+      
+      // Initialize user session with DAO if user exists
+      if (data.session?.user) {
+        try {
+          await userDataDAO.initializeUserSession(data.session.user.id);
+        } catch (error) {
+          console.error("Error initializing user session with DAO:", error);
+        }
+      }
+      
       setIsLoading(false);
     };
 
@@ -77,9 +88,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setSession(session);
         setUser(session?.user || null);
         
-        // Handle profile creation for signed in users
+        // Handle data clearing and session management with DAO
         if (event === 'SIGNED_IN' && session?.user) {
-          await createProfile(session.user);
+          try {
+            // Initialize user session and clear previous data
+            await userDataDAO.initializeUserSession(session.user.id);
+            // Handle profile creation for signed in users
+            await createProfile(session.user);
+          } catch (error) {
+            console.error("Error during sign in with DAO:", error);
+          }
+        } else if (event === 'SIGNED_OUT') {
+          try {
+            // Terminate user session and clear all data
+            await userDataDAO.terminateUserSession();
+          } catch (error) {
+            console.error("Error during sign out with DAO:", error);
+          }
+        } else if (event === 'TOKEN_REFRESHED' && session?.user) {
+          // Token refresh shouldn't clear data, just update user tracking
+          try {
+            const currentUserId = userDataDAO.getCurrentUserId();
+            if (currentUserId !== session.user.id) {
+              // Different user somehow, reinitialize
+              await userDataDAO.initializeUserSession(session.user.id);
+            }
+          } catch (error) {
+            console.error("Error during token refresh with DAO:", error);
+          }
         }
         
         setIsLoading(false);
@@ -151,8 +187,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
-    router.push("/login");
+    try {
+      // The auth state change will handle the DAO cleanup
+      await supabase.auth.signOut();
+      router.push("/login");
+    } catch (error) {
+      console.error("Error during sign out:", error);
+      // Force cleanup even if signOut fails
+      try {
+        await userDataDAO.terminateUserSession();
+      } catch (daoError) {
+        console.error("Error during DAO cleanup after failed signOut:", daoError);
+      }
+      router.push("/login");
+    }
   };
 
   const value = {

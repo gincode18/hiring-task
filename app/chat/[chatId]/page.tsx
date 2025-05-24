@@ -54,8 +54,7 @@ export default function ChatPage({ params }: ChatPageProps) {
           .single();
 
         if (error) {
-          console.error("Error fetching chat:", error);
-          setError("Chat not found or you don't have access to it");
+          console.log("Error fetching chat:", error);
           return;
         }
 

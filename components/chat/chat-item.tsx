@@ -8,6 +8,7 @@ import { format, isToday, isYesterday } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { AiOutlinePhone, AiOutlineCheck, AiOutlineCheckCircle } from "react-icons/ai";
 import Image from "next/image";
+import { useAuth } from "@/components/providers/auth-provider";
 
 type ChatWithParticipants = Database["public"]["Tables"]["chats"]["Row"] & {
   chat_participants: Array<{
@@ -24,10 +25,13 @@ interface ChatItemProps {
 export function ChatItem({ chat }: ChatItemProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const { user } = useAuth();
   const isActive = pathname === `/chat/${chat.id}`;
 
   // Get other participants (excluding current user)
-  const participants = chat.chat_participants;
+  const otherParticipants = chat.chat_participants.filter(
+    (participant) => participant.user_id !== user?.id
+  );
   
   // Get last message
   const lastMessage = chat.messages.length > 0 
@@ -49,8 +53,15 @@ export function ChatItem({ chat }: ChatItemProps) {
     return format(messageDate, "dd-MMM-yy");
   };
 
-  // Get chat name
-  const chatName = chat.name || participants.map(p => p.profiles.full_name).join(", ");
+  // For direct messages, show only the other person's name
+  // For group chats, use the chat name or show all other participants
+  const isDM = chat.type === "direct";
+  
+  const chatName = isDM 
+    ? (otherParticipants.length > 0 && otherParticipants[0].profiles?.full_name 
+        ? otherParticipants[0].profiles.full_name 
+        : "Unknown User")
+    : (chat.name || otherParticipants.map(p => p.profiles?.full_name || "Unknown User").join(", "));
 
   // Get chat preview
   const chatPreview = lastMessage ? lastMessage.content : "No messages yet";
@@ -74,6 +85,11 @@ export function ChatItem({ chat }: ChatItemProps) {
       .slice(0, 2);
   };
 
+  // Get avatar URL for DM (other person's avatar)
+  const avatarUrl = isDM && otherParticipants.length > 0
+    ? otherParticipants[0].profiles.avatar_url
+    : null;
+
   return (
     <div
       className={cn(
@@ -87,14 +103,22 @@ export function ChatItem({ chat }: ChatItemProps) {
         <div className="absolute left-0 top-0 bottom-0 w-1 bg-green-500 rounded-r-full" />
       )}
 
-      {/* Avatar with Periskope logo for business contacts */}
+      {/* Avatar with profile picture or initials fallback */}
       <div className="relative">
         <Avatar className="h-12 w-12 shrink-0 border border-gray-200/50">
-          <AvatarImage 
-            src="/periskope-icon.webp" 
-            alt={chatName}
-            className="object-cover"
-          />
+          {avatarUrl ? (
+            <AvatarImage 
+              src={avatarUrl} 
+              alt={chatName}
+              className="object-cover"
+            />
+          ) : (
+            <AvatarImage 
+              src="/periskope-icon.webp" 
+              alt={chatName}
+              className="object-cover"
+            />
+          )}
           <AvatarFallback className="bg-gradient-to-br from-green-400 to-green-600 text-white font-semibold text-sm">
             {getInitials(chatName)}
           </AvatarFallback>

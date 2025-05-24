@@ -231,23 +231,47 @@ class IndexedDBService {
   }
 
   async saveChats(chats: Chat[]): Promise<void> {
-    const store = await this.getStore(STORES.CHATS, "readwrite");
+    const transaction = await this.getTransaction([STORES.CHATS, STORES.CHAT_PARTICIPANTS, STORES.PROFILES], "readwrite");
     
     return new Promise((resolve, reject) => {
       let completed = 0;
       let hasError = false;
 
+      const chatStore = transaction.objectStore(STORES.CHATS);
+      const participantsStore = transaction.objectStore(STORES.CHAT_PARTICIPANTS);
+      const profilesStore = transaction.objectStore(STORES.PROFILES);
+
       chats.forEach((chat) => {
-        const request = store.put(chat);
-        request.onsuccess = () => {
+        // Save the chat itself
+        const chatRequest = chatStore.put(chat);
+        
+        chatRequest.onsuccess = () => {
+          // Save chat participants and their profiles
+          if (chat.chat_participants) {
+            chat.chat_participants.forEach((participant) => {
+              // Save the participant relationship
+              participantsStore.put({
+                chat_id: chat.id,
+                user_id: participant.user_id,
+                role: 'member' // default role
+              });
+              
+              // Save the profile if it exists
+              if (participant.profiles) {
+                profilesStore.put(participant.profiles);
+              }
+            });
+          }
+          
           completed++;
           if (completed === chats.length && !hasError) {
             resolve();
           }
         };
-        request.onerror = () => {
+        
+        chatRequest.onerror = () => {
           hasError = true;
-          reject(request.error);
+          reject(chatRequest.error);
         };
       });
 
@@ -260,19 +284,54 @@ class IndexedDBService {
   async getChats(): Promise<Chat[]> {
     const store = await this.getStore(STORES.CHATS);
     
-    return new Promise((resolve, reject) => {
-      const request = store.getAll();
-      request.onsuccess = () => {
-        const chats = request.result;
-        // Sort by last_message_at descending
-        chats.sort((a, b) => {
-          const aTime = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
-          const bTime = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
-          return bTime - aTime;
-        });
-        resolve(chats);
-      };
-      request.onerror = () => reject(request.error);
+    return new Promise(async (resolve, reject) => {
+      try {
+        const request = store.getAll();
+        request.onsuccess = async () => {
+          const chats = request.result;
+          
+          // For each chat, reconstruct the chat_participants with profiles
+          const enrichedChats = await Promise.all(
+            chats.map(async (chat) => {
+              const participants = await this.getChatParticipants(chat.id);
+              const participantsWithProfiles = await Promise.all(
+                participants.map(async (participant) => {
+                  const profile = await this.getProfile(participant.user_id);
+                  return {
+                    user_id: participant.user_id,
+                    profiles: profile || {
+                      id: participant.user_id,
+                      email: '',
+                      full_name: 'Unknown User',
+                      avatar_url: null,
+                      phone_number: null,
+                      created_at: '',
+                      last_seen: null
+                    }
+                  };
+                })
+              );
+              
+              return {
+                ...chat,
+                chat_participants: participantsWithProfiles
+              };
+            })
+          );
+          
+          // Sort by last_message_at descending
+          enrichedChats.sort((a, b) => {
+            const aTime = a.last_message_at ? new Date(a.last_message_at).getTime() : 0;
+            const bTime = b.last_message_at ? new Date(b.last_message_at).getTime() : 0;
+            return bTime - aTime;
+          });
+          
+          resolve(enrichedChats);
+        };
+        request.onerror = () => reject(request.error);
+      } catch (error) {
+        reject(error);
+      }
     });
   }
 

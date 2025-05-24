@@ -1,11 +1,22 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { AiOutlineFilter, AiOutlineSearch, AiOutlinePlus, AiOutlineClose } from "react-icons/ai";
+import {
+  AiOutlineFilter,
+  AiOutlineSearch,
+  AiOutlinePlus,
+  AiOutlineClose,
+} from "react-icons/ai";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Separator } from "@/components/ui/separator";
 import { ChatItem } from "@/components/chat/chat-item";
@@ -33,16 +44,30 @@ export function ChatSidebar() {
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
 
   // Use our new IndexedDB-powered hook for chats
-  const [{ chats: rawChats, loading, error, syncing }, { refreshChats, forceSync }] = useChatData({
+  const [
+    { chats: rawChats, loading, error, syncing },
+    { refreshChats, forceSync },
+  ] = useChatData({
     autoSync: true,
     syncInterval: 30000, // Sync every 30 seconds
   });
 
-  // Convert to the expected format
-  const chats: ChatWithParticipants[] = rawChats.map(chat => ({
+  // Convert to the expected format with proper fallback handling
+  const chats: ChatWithParticipants[] = rawChats.map((chat) => ({
     ...chat,
-    chat_participants: chat.chat_participants || [],
-    messages: chat.messages || []
+    chat_participants: (chat.chat_participants || []).map((participant) => ({
+      user_id: participant.user_id,
+      profiles: participant.profiles || {
+        id: participant.user_id,
+        email: "",
+        full_name: "Unknown User",
+        avatar_url: null,
+        phone_number: null,
+        created_at: "",
+        last_seen: null,
+      },
+    })),
+    messages: chat.messages || [],
   }));
 
   const { isOnline, pendingSync } = useOfflineSync();
@@ -90,7 +115,9 @@ export function ChatSidebar() {
   }, [user?.id, refreshChats]);
 
   // Get unique tags from all chats
-  const availableTags = [...new Set(chats.flatMap(chat => chat.tags || []))].sort();
+  const availableTags = [
+    ...new Set(chats.flatMap((chat) => chat.tags || [])),
+  ].sort();
 
   const filteredChats = chats.filter((chat) => {
     // Filter by search term
@@ -106,7 +133,7 @@ export function ChatSidebar() {
     // Filter by custom filter (tags)
     const filterMatch = !selectedTags.length
       ? true
-      : chat.tags && chat.tags.some(tag => selectedTags.includes(tag));
+      : chat.tags && chat.tags.some((tag) => selectedTags.includes(tag));
 
     return searchMatch && filterMatch;
   });
@@ -129,13 +156,17 @@ export function ChatSidebar() {
             </DialogTrigger>
             <DialogContent className="sm:max-w-[500px] max-h-[600px] flex flex-col">
               <DialogHeader>
-                <DialogTitle className="text-lg font-semibold">Advanced Filters</DialogTitle>
+                <DialogTitle className="text-lg font-semibold">
+                  Advanced Filters
+                </DialogTitle>
               </DialogHeader>
-              
+
               <div className="flex-1 overflow-hidden flex flex-col gap-6 py-4">
                 {/* Search by Name Section */}
                 <div>
-                  <h4 className="text-sm font-semibold text-gray-900 mb-3">Search by Name</h4>
+                  <h4 className="text-sm font-semibold text-gray-900 mb-3">
+                    Search by Name
+                  </h4>
                   <div className="relative">
                     <AiOutlineSearch className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                     <Input
@@ -152,7 +183,9 @@ export function ChatSidebar() {
                 {/* Tag Filters Section */}
                 <div className="flex-1 overflow-hidden flex flex-col">
                   <div className="flex items-center justify-between mb-3">
-                    <h4 className="text-sm font-semibold text-gray-900">Filter by Tags</h4>
+                    <h4 className="text-sm font-semibold text-gray-900">
+                      Filter by Tags
+                    </h4>
                     {selectedTags.length > 0 && (
                       <Button
                         variant="ghost"
@@ -189,19 +222,26 @@ export function ChatSidebar() {
                   {/* Selected Tags Display */}
                   {selectedTags.length > 0 && (
                     <div className="mb-4">
-                      <p className="text-xs text-gray-500 mb-2">Selected ({selectedTags.length}):</p>
+                      <p className="text-xs text-gray-500 mb-2">
+                        Selected ({selectedTags.length}):
+                      </p>
                       <div className="flex flex-wrap gap-1">
                         {selectedTags.map((tag) => {
                           const getTagColor = (tag: string) => {
                             const colors = [
                               "bg-blue-100 text-blue-800 border-blue-200",
-                              "bg-green-100 text-green-800 border-green-200", 
+                              "bg-green-100 text-green-800 border-green-200",
                               "bg-yellow-100 text-yellow-800 border-yellow-200",
                               "bg-purple-100 text-purple-800 border-purple-200",
                               "bg-pink-100 text-pink-800 border-pink-200",
-                              "bg-indigo-100 text-indigo-800 border-indigo-200"
+                              "bg-indigo-100 text-indigo-800 border-indigo-200",
                             ];
-                            const index = tag.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+                            const index = tag
+                              .split("")
+                              .reduce(
+                                (acc, char) => acc + char.charCodeAt(0),
+                                0
+                              );
                             return colors[index % colors.length];
                           };
 
@@ -209,8 +249,14 @@ export function ChatSidebar() {
                             <Badge
                               key={tag}
                               variant="outline"
-                              className={`text-xs border ${getTagColor(tag)} cursor-pointer`}
-                              onClick={() => setSelectedTags(selectedTags.filter(t => t !== tag))}
+                              className={`text-xs border ${getTagColor(
+                                tag
+                              )} cursor-pointer`}
+                              onClick={() =>
+                                setSelectedTags(
+                                  selectedTags.filter((t) => t !== tag)
+                                )
+                              }
                             >
                               {tag}
                               <AiOutlineClose className="h-3 w-3 ml-1 hover:bg-black/10 rounded" />
@@ -225,26 +271,38 @@ export function ChatSidebar() {
                   <div className="flex-1 overflow-y-auto">
                     <div className="space-y-2">
                       {availableTags
-                        .filter(tag => 
-                          !selectedTags.includes(tag) && 
-                          (!tagSearch || tag.toLowerCase().includes(tagSearch.toLowerCase()))
+                        .filter(
+                          (tag) =>
+                            !selectedTags.includes(tag) &&
+                            (!tagSearch ||
+                              tag
+                                .toLowerCase()
+                                .includes(tagSearch.toLowerCase()))
                         )
                         .map((tag) => {
                           const getTagColor = (tag: string) => {
                             const colors = [
                               "bg-blue-100 text-blue-800 border-blue-200",
-                              "bg-green-100 text-green-800 border-green-200", 
+                              "bg-green-100 text-green-800 border-green-200",
                               "bg-yellow-100 text-yellow-800 border-yellow-200",
                               "bg-purple-100 text-purple-800 border-purple-200",
                               "bg-pink-100 text-pink-800 border-pink-200",
-                              "bg-indigo-100 text-indigo-800 border-indigo-200"
+                              "bg-indigo-100 text-indigo-800 border-indigo-200",
                             ];
-                            const index = tag.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+                            const index = tag
+                              .split("")
+                              .reduce(
+                                (acc, char) => acc + char.charCodeAt(0),
+                                0
+                              );
                             return colors[index % colors.length];
                           };
 
                           return (
-                            <div key={tag} className="flex items-center space-x-2">
+                            <div
+                              key={tag}
+                              className="flex items-center space-x-2"
+                            >
                               <Checkbox
                                 id={tag}
                                 checked={selectedTags.includes(tag)}
@@ -252,14 +310,18 @@ export function ChatSidebar() {
                                   if (checked) {
                                     setSelectedTags([...selectedTags, tag]);
                                   } else {
-                                    setSelectedTags(selectedTags.filter(t => t !== tag));
+                                    setSelectedTags(
+                                      selectedTags.filter((t) => t !== tag)
+                                    );
                                   }
                                 }}
                                 className="border-gray-300 data-[state=checked]:bg-green-600 data-[state=checked]:border-green-600"
                               />
                               <Badge
                                 variant="outline"
-                                className={`text-xs border cursor-pointer flex-1 justify-start ${getTagColor(tag)}`}
+                                className={`text-xs border cursor-pointer flex-1 justify-start ${getTagColor(
+                                  tag
+                                )}`}
                                 onClick={() => {
                                   if (!selectedTags.includes(tag)) {
                                     setSelectedTags([...selectedTags, tag]);
@@ -272,7 +334,7 @@ export function ChatSidebar() {
                           );
                         })}
                     </div>
-                    
+
                     {availableTags.length === 0 && (
                       <p className="text-sm text-gray-500 text-center py-4">
                         No tags available
@@ -317,24 +379,17 @@ export function ChatSidebar() {
 
         <div className="flex items-center space-x-2">
           {/* Sync status indicator */}
-          {syncing && (
-            <div className="text-xs text-blue-600">
-              Syncing...
-            </div>
-          )}
-          
+          {syncing && <div className="text-xs text-blue-600">Syncing...</div>}
+
           {/* Offline indicator */}
-          {!isOnline && (
-            <div className="text-xs text-yellow-600">
-              Offline
-            </div>
-          )}
+          {!isOnline && <div className="text-xs text-yellow-600">Offline</div>}
 
           <Button
             variant="ghost"
             size="sm"
-            className="h-7 w-7 p-0"
+            className="h-7 w-7 p-0 text-green-600 hover:bg-green-50 hover:text-green-700 transition-colors"
             onClick={() => setShowNewChatDialog(true)}
+            title="Start new conversation"
           >
             <AiOutlinePlus className="h-4 w-4" />
           </Button>
@@ -385,10 +440,22 @@ export function ChatSidebar() {
             </Button>
           </div>
         ) : filteredChats.length === 0 ? (
-          <div className="flex items-center justify-center h-32">
+          <div className="flex flex-col items-center justify-center h-32 space-y-3">
             <div className="text-sm text-gray-500">
-              {search || selectedTags.length > 0 ? "No chats found" : "No chats yet"}
+              {search || selectedTags.length > 0
+                ? "No chats found"
+                : "No chats yet"}
             </div>
+            {!search && selectedTags.length === 0 && (
+              <Button
+                onClick={() => setShowNewChatDialog(true)}
+                className="bg-green-600 hover:bg-green-700 text-white flex items-center gap-2"
+                size="sm"
+              >
+                <AiOutlinePlus className="h-4 w-4" />
+                Start Your First Chat
+              </Button>
+            )}
           </div>
         ) : (
           <div className="space-y-1 p-2">
@@ -400,11 +467,20 @@ export function ChatSidebar() {
       </div>
 
       {/* New Chat Dialog */}
-      <NewChatDialog 
-        open={showNewChatDialog} 
+      <NewChatDialog
+        open={showNewChatDialog}
         onOpenChange={setShowNewChatDialog}
         onChatCreated={refreshChats}
       />
+
+      {/* Floating Action Button for New Chat */}
+      <Button
+        onClick={() => setShowNewChatDialog(true)}
+        className="absolute bottom-6 right-6 h-14 w-14 rounded-full bg-green-600 hover:bg-green-700 shadow-lg hover:shadow-xl transition-all duration-200 transform hover:scale-105 z-10"
+        title="Start new conversation"
+      >
+        <AiOutlinePlus className="h-6 w-6 text-white" />
+      </Button>
     </div>
   );
 }
