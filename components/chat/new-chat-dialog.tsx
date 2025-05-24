@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Users, MessageSquare, X } from "lucide-react";
+import { Search, Users, MessageSquare, X, Tag } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -34,8 +34,13 @@ export function NewChatDialog({ open, onOpenChange, onChatCreated }: NewChatDial
   const [search, setSearch] = useState("");
   const [selectedUsers, setSelectedUsers] = useState<Profile[]>([]);
   const [chatName, setChatName] = useState("");
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [customTag, setCustomTag] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+
+  // Common predefined tags
+  const commonTags = ["demo", "internal", "signup", "content", "support", "sales", "marketing"];
 
   useEffect(() => {
     if (!open || !user) return;
@@ -84,6 +89,35 @@ export function NewChatDialog({ open, onOpenChange, onChatCreated }: NewChatDial
     setSelectedUsers(prev => prev.filter(u => u.id !== userId));
   };
 
+  const toggleTag = (tag: string) => {
+    setSelectedTags(prev => {
+      const isSelected = prev.includes(tag);
+      if (isSelected) {
+        return prev.filter(t => t !== tag);
+      } else {
+        return [...prev, tag];
+      }
+    });
+  };
+
+  const removeTag = (tag: string) => {
+    setSelectedTags(prev => prev.filter(t => t !== tag));
+  };
+
+  const addCustomTag = () => {
+    if (customTag.trim() && !selectedTags.includes(customTag.trim())) {
+      setSelectedTags(prev => [...prev, customTag.trim()]);
+      setCustomTag("");
+    }
+  };
+
+  const handleCustomTagKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      addCustomTag();
+    }
+  };
+
   const createChat = async () => {
     if (!user || selectedUsers.length === 0) return;
 
@@ -100,10 +134,7 @@ export function NewChatDialog({ open, onOpenChange, onChatCreated }: NewChatDial
           name: finalChatName,
           type: chatType,
           created_by: user.id,
-          is_demo: false,
-          is_internal: false,
-          is_signup: false,
-          is_content: false,
+          tags: selectedTags,
         })
         .select()
         .single();
@@ -143,6 +174,8 @@ export function NewChatDialog({ open, onOpenChange, onChatCreated }: NewChatDial
       // Reset form
       setSelectedUsers([]);
       setChatName("");
+      setSelectedTags([]);
+      setCustomTag("");
       setSearch("");
 
     } catch (error) {
@@ -225,6 +258,98 @@ export function NewChatDialog({ open, onOpenChange, onChatCreated }: NewChatDial
               />
             </div>
           )}
+
+          {/* Tags section */}
+          <div className="space-y-3">
+            <label className="text-sm font-medium flex items-center gap-2">
+              <Tag className="h-4 w-4" />
+              Tags (optional)
+            </label>
+            
+            {/* Selected tags */}
+            {selectedTags.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {selectedTags.map((tag) => (
+                  <Badge
+                    key={tag}
+                    variant="outline"
+                    className="flex items-center gap-1 pr-1"
+                  >
+                    <span>{tag}</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-auto p-0.5 hover:bg-destructive hover:text-destructive-foreground"
+                      onClick={() => removeTag(tag)}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </Badge>
+                ))}
+              </div>
+            )}
+
+            {/* Common tags */}
+            <div className="space-y-2">
+              <span className="text-xs text-gray-500">Common tags:</span>
+              <div className="flex flex-wrap gap-2">
+                {commonTags.map((tag) => {
+                  const isSelected = selectedTags.includes(tag);
+                  const getTagColor = (tag: string) => {
+                    switch (tag.toLowerCase()) {
+                      case 'demo':
+                        return isSelected ? 'bg-orange-500 text-white' : 'bg-orange-100 text-orange-700 hover:bg-orange-200';
+                      case 'internal':
+                        return isSelected ? 'bg-green-500 text-white' : 'bg-green-100 text-green-700 hover:bg-green-200';
+                      case 'signup':
+                        return isSelected ? 'bg-blue-500 text-white' : 'bg-blue-100 text-blue-700 hover:bg-blue-200';
+                      case 'content':
+                        return isSelected ? 'bg-purple-500 text-white' : 'bg-purple-100 text-purple-700 hover:bg-purple-200';
+                      case 'support':
+                        return isSelected ? 'bg-red-500 text-white' : 'bg-red-100 text-red-700 hover:bg-red-200';
+                      case 'sales':
+                        return isSelected ? 'bg-yellow-500 text-white' : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200';
+                      case 'marketing':
+                        return isSelected ? 'bg-pink-500 text-white' : 'bg-pink-100 text-pink-700 hover:bg-pink-200';
+                      default:
+                        return isSelected ? 'bg-gray-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200';
+                    }
+                  };
+
+                  return (
+                    <Badge
+                      key={tag}
+                      variant="outline"
+                      className={`cursor-pointer border-0 ${getTagColor(tag)}`}
+                      onClick={() => toggleTag(tag)}
+                    >
+                      {tag}
+                    </Badge>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Custom tag input */}
+            <div className="flex gap-2">
+              <Input
+                placeholder="Add custom tag..."
+                value={customTag}
+                onChange={(e) => setCustomTag(e.target.value)}
+                onKeyPress={handleCustomTagKeyPress}
+                className="flex-1"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={addCustomTag}
+                disabled={!customTag.trim() || selectedTags.includes(customTag.trim())}
+              >
+                Add
+              </Button>
+            </div>
+          </div>
 
           {/* Users list */}
           <div className="space-y-2">

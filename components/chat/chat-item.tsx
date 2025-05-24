@@ -86,26 +86,38 @@ export function ChatItem({ chat }: ChatItemProps) {
               </span>
             </div>
             <div className="flex items-center space-x-1 shrink-0">
-              {chat.is_demo && (
-                <Badge variant="secondary" className="px-2 py-0.5 text-xs bg-orange-100 text-orange-700 border-0">
-                  Demo
-                </Badge>
-              )}
-              {chat.is_internal && (
-                <Badge variant="secondary" className="px-2 py-0.5 text-xs bg-green-100 text-green-700 border-0">
-                  internal
-                </Badge>
-              )}
-              {chat.is_signup && (
-                <Badge variant="secondary" className="px-2 py-0.5 text-xs bg-blue-100 text-blue-700 border-0">
-                  Signup
-                </Badge>
-              )}
-              {chat.is_content && (
-                <Badge variant="secondary" className="px-2 py-0.5 text-xs bg-purple-100 text-purple-700 border-0">
-                  Content
-                </Badge>
-              )}
+              {chat.tags && chat.tags.length > 0 && chat.tags.map((tag) => {
+                const getTagColor = (tag: string) => {
+                  switch (tag.toLowerCase()) {
+                    case 'demo':
+                      return 'bg-orange-100 text-orange-700 hover:bg-orange-200';
+                    case 'internal':
+                      return 'bg-green-100 text-green-700 hover:bg-green-200';
+                    case 'signup':
+                      return 'bg-blue-100 text-blue-700 hover:bg-blue-200';
+                    case 'content':
+                      return 'bg-purple-100 text-purple-700 hover:bg-purple-200';
+                    case 'support':
+                      return 'bg-red-100 text-red-700 hover:bg-red-200';
+                    case 'sales':
+                      return 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200';
+                    case 'marketing':
+                      return 'bg-pink-100 text-pink-700 hover:bg-pink-200';
+                    default:
+                      return 'bg-green-100 text-green-700 hover:bg-green-200';
+                  }
+                };
+
+                return (
+                  <Badge 
+                    key={tag} 
+                    variant="secondary" 
+                    className={`px-2 py-0.5 text-xs border-0 ${getTagColor(tag)}`}
+                  >
+                    {tag}
+                  </Badge>
+                );
+              })}
             </div>
           </div>
           

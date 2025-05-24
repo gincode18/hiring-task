@@ -16,10 +16,7 @@ export interface Database {
           type: string
           created_at: string
           created_by: string
-          is_demo: boolean
-          is_internal: boolean
-          is_signup: boolean
-          is_content: boolean
+          tags: string[]
           last_message_at: string | null
         }
         Insert: {
@@ -28,10 +25,7 @@ export interface Database {
           type: string
           created_at?: string
           created_by: string
-          is_demo?: boolean
-          is_internal?: boolean
-          is_signup?: boolean
-          is_content?: boolean
+          tags?: string[]
           last_message_at?: string | null
         }
         Update: {
@@ -40,10 +34,7 @@ export interface Database {
           type?: string
           created_at?: string
           created_by?: string
-          is_demo?: boolean
-          is_internal?: boolean
-          is_signup?: boolean
-          is_content?: boolean
+          tags?: string[]
           last_message_at?: string | null
         }
       }

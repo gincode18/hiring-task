@@ -33,10 +33,7 @@ CREATE TABLE IF NOT EXISTS chats (
   type TEXT NOT NULL DEFAULT 'direct',
   created_at TIMESTAMPTZ DEFAULT now(),
   created_by UUID REFERENCES profiles(id),
-  is_demo BOOLEAN DEFAULT false,
-  is_internal BOOLEAN DEFAULT false,
-  is_signup BOOLEAN DEFAULT false,
-  is_content BOOLEAN DEFAULT false,
+  tags TEXT[] DEFAULT '{}',
   last_message_at TIMESTAMPTZ
 );
 

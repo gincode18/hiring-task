@@ -92,6 +92,9 @@ export function ChatSidebar() {
     };
   }, [fetchChats]);
 
+  // Get unique tags from all chats
+  const availableTags = [...new Set(chats.flatMap(chat => chat.tags || []))].sort();
+
   const filteredChats = chats.filter((chat) => {
     // Filter by search term
     const searchMatch = !search
@@ -103,13 +106,10 @@ export function ChatSidebar() {
             .includes(search.toLowerCase())
         );
 
-    // Filter by custom filter
+    // Filter by custom filter (tags)
     const filterMatch = !filter
       ? true
-      : (filter === "demo" && chat.is_demo) ||
-        (filter === "internal" && chat.is_internal) ||
-        (filter === "signup" && chat.is_signup) ||
-        (filter === "content" && chat.is_content);
+      : chat.tags && chat.tags.some(tag => tag.toLowerCase() === filter.toLowerCase());
 
     return searchMatch && filterMatch;
   });
@@ -146,46 +146,36 @@ export function ChatSidebar() {
                   >
                     All
                   </Badge>
-                  <Badge
-                    variant={filter === "demo" ? "default" : "outline"}
-                    className="cursor-pointer"
-                    onClick={() => {
-                      setFilter("demo");
-                      setShowFilterDialog(false);
-                    }}
-                  >
-                    Demo
-                  </Badge>
-                  <Badge
-                    variant={filter === "internal" ? "default" : "outline"}
-                    className="cursor-pointer"
-                    onClick={() => {
-                      setFilter("internal");
-                      setShowFilterDialog(false);
-                    }}
-                  >
-                    Internal
-                  </Badge>
-                  <Badge
-                    variant={filter === "signup" ? "default" : "outline"}
-                    className="cursor-pointer"
-                    onClick={() => {
-                      setFilter("signup");
-                      setShowFilterDialog(false);
-                    }}
-                  >
-                    Signup
-                  </Badge>
-                  <Badge
-                    variant={filter === "content" ? "default" : "outline"}
-                    className="cursor-pointer"
-                    onClick={() => {
-                      setFilter("content");
-                      setShowFilterDialog(false);
-                    }}
-                  >
-                    Content
-                  </Badge>
+                  {availableTags.map((tag) => {
+                    const getTagColor = (tag: string) => {
+                      switch (tag.toLowerCase()) {
+                        case 'demo':
+                          return 'bg-orange-100 text-orange-700 hover:bg-orange-200';
+                        case 'internal':
+                          return 'bg-green-100 text-green-700 hover:bg-green-200';
+                        case 'signup':
+                          return 'bg-blue-100 text-blue-700 hover:bg-blue-200';
+                        case 'content':
+                          return 'bg-purple-100 text-purple-700 hover:bg-purple-200';
+                        default:
+                          return 'bg-gray-100 text-gray-700 hover:bg-gray-200';
+                      }
+                    };
+
+                    return (
+                      <Badge
+                        key={tag}
+                        variant={filter === tag ? "default" : "outline"}
+                        className={`cursor-pointer ${filter !== tag ? getTagColor(tag) : ''}`}
+                        onClick={() => {
+                          setFilter(tag);
+                          setShowFilterDialog(false);
+                        }}
+                      >
+                        {tag}
+                      </Badge>
+                    );
+                  })}
                 </div>
               </div>
             </DialogContent>
