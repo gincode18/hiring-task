@@ -2,6 +2,11 @@
 
 A modern real-time chat application built with **Next.js**, **Supabase**, and **IndexedDB** for instant messaging, offline functionality, and seamless user experience.
 
+## 🚀 Demo & Live App
+
+- **🎥 Demo Video**: [Watch the app in action](https://youtu.be/GPx1SEVRV_k?si=dqADyd_5v0ysbxHk)
+- **🌐 Live Application**: [Try it now](https://periskope-task-iota.vercel.app/)
+
 ## 🌟 Key Features
 
 - **⚡ Real-time Messaging**: Instant message delivery using Supabase real-time subscriptions

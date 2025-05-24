@@ -23,6 +23,8 @@ interface ChatDataActions {
   refreshMessages: () => Promise<void>;
   refreshFreshMessages: () => Promise<void>;
   refreshChats: () => Promise<void>;
+  refreshFreshChats: () => Promise<void>;
+  markMessagesAsRead: (messageIds: string[]) => Promise<void>;
   forceSync: () => Promise<void>;
   searchMessages: (query: string) => Promise<Message[]>;
   clearCache: () => Promise<void>;
@@ -165,6 +167,30 @@ export function useChatData(options: UseChatDataOptions = {}): [ChatDataState, C
     await loadChats();
   }, [loadChats]);
 
+  // Refresh fresh chats
+  const refreshFreshChats = useCallback(async () => {
+    if (!user?.id) return;
+    
+    try {
+      setState(prev => ({ ...prev, loading: false, error: null }));
+      
+      const chats = await syncService.getFreshChats(user.id);
+      
+      setState(prev => ({ 
+        ...prev,
+        chats,
+        loading: false 
+      }));
+    } catch (error) {
+      console.error("Error refreshing fresh chats:", error);
+      setState(prev => ({ 
+        ...prev,
+        error: error instanceof Error ? error.message : "Failed to refresh chats",
+        loading: false 
+      }));
+    }
+  }, [user?.id]);
+
   // Force full sync
   const forceSync = useCallback(async () => {
     if (!user?.id) return;
@@ -303,16 +329,43 @@ export function useChatData(options: UseChatDataOptions = {}): [ChatDataState, C
     };
   }, []);
 
+  // Mark messages as read
+  const markMessagesAsRead = useCallback(async (messageIds: string[]) => {
+    if (messageIds.length === 0) return;
+
+    try {
+      await syncService.markMessagesAsRead(messageIds);
+      
+      // Update local state immediately to reflect read status
+      setState(prev => ({
+        ...prev,
+        messages: prev.messages.map(msg => 
+          messageIds.includes(msg.id) 
+            ? { ...msg, is_read: true, read_at: new Date().toISOString() }
+            : msg
+        )
+      }));
+    } catch (error) {
+      console.error("Error marking messages as read:", error);
+      setState(prev => ({ 
+        ...prev,
+        error: error instanceof Error ? error.message : "Failed to mark messages as read"
+      }));
+    }
+  }, []);
+
   // Actions object
   const actions: ChatDataActions = {
     sendMessage,
     refreshMessages,
     refreshFreshMessages,
     refreshChats,
+    refreshFreshChats,
     forceSync,
     searchMessages,
     clearCache,
     getSyncInfo,
+    markMessagesAsRead,
   };
 
   return [state, actions];

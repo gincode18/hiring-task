@@ -67,7 +67,7 @@ export function ChatMessages({ chatId }: ChatMessagesProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Use our new IndexedDB-powered hook
-  const [{ messages: cachedMessages, loading, error, syncing }, { refreshFreshMessages }] = useChatData({
+  const [{ messages: cachedMessages, loading, error, syncing }, { refreshFreshMessages, markMessagesAsRead }] = useChatData({
     chatId,
     autoSync: true,
     syncInterval: 30000, // Sync every 30 seconds
@@ -119,6 +119,20 @@ export function ChatMessages({ chatId }: ChatMessagesProps) {
           await refreshFreshMessages();
         }
       )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "messages",
+          filter: `chat_id=eq.${chatId}`,
+        },
+        async (payload) => {
+          console.log("Message updated via real-time (read status/content change), fetching fresh messages");
+          // Fetch fresh messages from Supabase and update cache for read status updates
+          await refreshFreshMessages();
+        }
+      )
       .subscribe();
 
     return () => {
@@ -142,19 +156,13 @@ export function ChatMessages({ chatId }: ChatMessagesProps) {
       );
 
       if (unreadMessages.length > 0) {
-        // Mark as read in Supabase without refreshing the UI
-        const { error } = await supabase
-          .from("messages")
-          .update({ is_read: true, read_at: new Date().toISOString() })
-          .in(
-            "id",
-            unreadMessages.map((message) => message.id)
-          );
-
-        if (error) {
+        try {
+          // Use the optimistic update method from the hook
+          await markMessagesAsRead(unreadMessages.map(msg => msg.id));
+          console.log("Messages marked as read using optimistic update");
+        } catch (error) {
           console.error("Error marking messages as read:", error);
         }
-        // Don't call refreshFreshMessages here to avoid infinite loop
       }
     };
 
@@ -162,7 +170,7 @@ export function ChatMessages({ chatId }: ChatMessagesProps) {
     const timeoutId = setTimeout(markAsRead, 1000);
     
     return () => clearTimeout(timeoutId);
-  }, [messages.length, user]); // Only depend on message count and user, not the full messages array
+  }, [messages.length, user, markMessagesAsRead]); // Use markMessagesAsRead instead of refreshFreshMessages
 
   // Group messages by date and render with separators
   const renderMessagesWithDateSeparators = () => {

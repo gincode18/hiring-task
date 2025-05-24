@@ -510,6 +510,117 @@ class SyncService {
     }
   }
 
+  // Force fresh chat loading from Supabase (for real-time events)
+  async getFreshChats(userId: string): Promise<Chat[]> {
+    try {
+      console.log("syncService.getFreshChats - Fetching fresh chats from Supabase for userId:", userId);
+      
+      // Always fetch from Supabase, ignore cache
+      const chatIds = await this.getUserChatIds(userId);
+      
+      const { data: remoteChats, error } = await supabase
+        .from("chats")
+        .select(`
+          *,
+          chat_participants(user_id, profiles(*))
+        `)
+        .in("id", chatIds)
+        .order("last_message_at", { ascending: false });
+
+      if (error) {
+        throw new Error(`Failed to fetch fresh chats: ${error.message}`);
+      }
+
+      const chats = (remoteChats as Chat[]) || [];
+      console.log("syncService.getFreshChats - Got fresh chats:", chats.length);
+      
+      // Update IndexedDB cache with fresh data
+      if (chats.length > 0) {
+        try {
+          await indexedDBService.saveChats(chats);
+
+          // Store chat participants and profiles
+          for (const chat of chats) {
+            if (chat.chat_participants) {
+              for (const participant of chat.chat_participants) {
+                // Add chat_id to participant object for IndexedDB key path
+                const participantWithChatId = {
+                  ...participant,
+                  chat_id: chat.id
+                };
+                await indexedDBService.saveChatParticipant(participantWithChatId);
+                if (participant.profiles) {
+                  await indexedDBService.saveProfile(participant.profiles);
+                }
+              }
+            }
+          }
+
+          await indexedDBService.updateSyncStatus('chats');
+          console.log("syncService.getFreshChats - Updated cache with fresh chats");
+        } catch (cacheError) {
+          console.warn("Failed to update cache with fresh chats:", cacheError);
+        }
+      }
+
+      return chats;
+
+    } catch (error) {
+      console.error("Error getting fresh chats:", error);
+      // Fallback to regular cached method
+      return this.getChats(userId);
+    }
+  }
+
+  // Optimistically mark messages as read in both cache and server
+  async markMessagesAsRead(messageIds: string[]): Promise<void> {
+    if (messageIds.length === 0) return;
+
+    try {
+      console.log("syncService.markMessagesAsRead - Marking messages as read:", messageIds);
+      
+      // First, optimistically update IndexedDB for immediate UI feedback
+      const readAt = new Date().toISOString();
+      await Promise.all(
+        messageIds.map(async (messageId) => {
+          try {
+            // Get the message from cache
+            const cachedMessage = await indexedDBService.getMessage(messageId);
+            if (cachedMessage) {
+              // Update the message in cache
+              const updatedMessage = {
+                ...cachedMessage,
+                is_read: true,
+                read_at: readAt
+              };
+              await indexedDBService.saveMessage(updatedMessage);
+            }
+          } catch (error) {
+            console.warn("Failed to update message in cache:", messageId, error);
+          }
+        })
+      );
+
+      // Then, update in Supabase
+      const { error } = await supabase
+        .from("messages")
+        .update({ is_read: true, read_at: readAt })
+        .in("id", messageIds);
+
+      if (error) {
+        console.error("Error marking messages as read in Supabase:", error);
+        // Could implement retry logic or rollback cache changes here
+        throw error;
+      }
+
+      console.log("Successfully marked messages as read in both cache and server");
+
+    } catch (error) {
+      console.error("Error in markMessagesAsRead:", error);
+      throw error;
+    }
+  }
+
   // Helper method to get chat IDs where user is a participant
   private async getUserChatIds(userId: string): Promise<string[]> {
     const { data: chatParticipants, error } = await supabase

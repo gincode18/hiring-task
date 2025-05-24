@@ -46,7 +46,7 @@ export function ChatSidebar() {
   // Use our new IndexedDB-powered hook for chats
   const [
     { chats: rawChats, loading, error, syncing },
-    { refreshChats, forceSync },
+    { refreshChats, refreshFreshChats, forceSync },
   ] = useChatData({
     autoSync: true,
     syncInterval: 30000, // Sync every 30 seconds
@@ -86,33 +86,53 @@ export function ChatSidebar() {
           schema: "public",
           table: "chats",
         },
-        () => {
-          refreshChats();
+        async () => {
+          console.log("Chat change detected, refreshing chats");
+          await refreshFreshChats();
         }
       )
       .subscribe();
 
-    // Subscribe to new messages
-    const messageSubscription = supabase
-      .channel("messages-channel")
+    // Subscribe to chat participants changes (for group membership changes)
+    const participantSubscription = supabase
+      .channel("chat-participants-channel")
       .on(
         "postgres_changes",
         {
           event: "*",
           schema: "public",
+          table: "chat_participants",
+        },
+        async () => {
+          console.log("Chat participant change detected, refreshing chats");
+          await refreshFreshChats();
+        }
+      )
+      .subscribe();
+
+    // Subscribe to new messages to update chat list order
+    const messageSubscription = supabase
+      .channel("messages-channel")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
           table: "messages",
         },
-        () => {
-          refreshChats();
+        async () => {
+          console.log("New message detected, refreshing chats for order update");
+          await refreshFreshChats();
         }
       )
       .subscribe();
 
     return () => {
       chatSubscription.unsubscribe();
+      participantSubscription.unsubscribe();
       messageSubscription.unsubscribe();
     };
-  }, [user?.id, refreshChats]);
+  }, [user?.id, refreshFreshChats]);
 
   // Get unique tags from all chats
   const availableTags = [
@@ -470,7 +490,7 @@ export function ChatSidebar() {
       <NewChatDialog
         open={showNewChatDialog}
         onOpenChange={setShowNewChatDialog}
-        onChatCreated={refreshChats}
+        onChatCreated={refreshFreshChats}
       />
 
       {/* Floating Action Button for New Chat */}
