@@ -14,6 +14,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { AvatarUpload } from "@/components/ui/avatar-upload";
 import { useAuth } from "@/components/providers/auth-provider";
 import { useToast } from "@/hooks/use-toast";
 import Link from "next/link";
@@ -34,6 +35,7 @@ export function RegisterForm() {
   const { signUp } = useAuth();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
+  const [profilePictureUrl, setProfilePictureUrl] = useState<string | null>(null);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
@@ -47,7 +49,7 @@ export function RegisterForm() {
   const onSubmit = async (data: FormValues) => {
     setIsLoading(true);
     try {
-      await signUp(data.email, data.password, data.fullName);
+      await signUp(data.email, data.password, data.fullName, profilePictureUrl);
       toast({
         title: "Success",
         description: "Your account has been created",
@@ -66,6 +68,16 @@ export function RegisterForm() {
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        {/* Profile Picture Upload */}
+        <div className="flex flex-col items-center space-y-2">
+          <label className="text-sm font-medium text-gray-700">Profile Picture (Optional)</label>
+          <AvatarUpload
+            onImageUpload={setProfilePictureUrl}
+            disabled={isLoading}
+            size="lg"
+          />
+        </div>
+
         <FormField
           control={form.control}
           name="fullName"

@@ -10,7 +10,7 @@ type AuthContextType = {
   session: Session | null;
   isLoading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, fullName: string) => Promise<void>;
+  signUp: (email: string, password: string, fullName: string, avatarUrl?: string | null) => Promise<void>;
   signOut: () => Promise<void>;
 };
 
@@ -22,7 +22,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
 
-  const createProfile = async (user: User, fullName?: string) => {
+  const createProfile = async (user: User, fullName?: string, avatarUrl?: string | null) => {
     try {
       // Check if profile already exists
       const { data: existingProfile } = await supabase
@@ -38,6 +38,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             id: user.id,
             email: user.email || '',
             full_name: fullName || user.user_metadata?.full_name || 'User',
+            avatar_url: avatarUrl || null,
             created_at: new Date().toISOString(),
           });
 
@@ -113,7 +114,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const signUp = async (email: string, password: string, fullName: string) => {
+  const signUp = async (email: string, password: string, fullName: string, avatarUrl?: string | null) => {
     setIsLoading(true);
     
     try {
@@ -135,7 +136,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (data.user && data.session) {
         // Wait a bit for the session to be established
         setTimeout(async () => {
-          await createProfile(data.user!, fullName);
+          await createProfile(data.user!, fullName, avatarUrl);
         }, 1000);
         router.push("/chat");
       } else {
