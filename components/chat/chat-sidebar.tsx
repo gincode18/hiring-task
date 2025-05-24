@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { AiOutlineFilter, AiOutlineSearch, AiOutlinePlus } from "react-icons/ai";
+import { AiOutlineFilter, AiOutlineSearch, AiOutlinePlus, AiOutlineClose } from "react-icons/ai";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Separator } from "@/components/ui/separator";
 import { ChatItem } from "@/components/chat/chat-item";
 import { NewChatDialog } from "@/components/chat/new-chat-dialog";
 import { useAuth } from "@/components/providers/auth-provider";
@@ -24,7 +26,8 @@ export function ChatSidebar() {
   const { user } = useAuth();
   const [chats, setChats] = useState<ChatWithParticipants[]>([]);
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState("");
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [tagSearch, setTagSearch] = useState("");
   const [showNewChatDialog, setShowNewChatDialog] = useState(false);
   const [showFilterDialog, setShowFilterDialog] = useState(false);
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
@@ -107,9 +110,9 @@ export function ChatSidebar() {
         );
 
     // Filter by custom filter (tags)
-    const filterMatch = !filter
+    const filterMatch = !selectedTags.length
       ? true
-      : chat.tags && chat.tags.some(tag => tag.toLowerCase() === filter.toLowerCase());
+      : chat.tags && chat.tags.some(tag => selectedTags.includes(tag));
 
     return searchMatch && filterMatch;
   });
@@ -130,52 +133,192 @@ export function ChatSidebar() {
                 Custom filter
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[425px]">
+            <DialogContent className="sm:max-w-[500px] max-h-[600px] flex flex-col">
               <DialogHeader>
-                <DialogTitle>Custom Filters</DialogTitle>
+                <DialogTitle className="text-lg font-semibold">Advanced Filters</DialogTitle>
               </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="flex flex-wrap gap-2">
-                  <Badge
-                    variant={!filter ? "default" : "outline"}
-                    className="cursor-pointer"
+              
+              <div className="flex-1 overflow-hidden flex flex-col gap-6 py-4">
+                {/* Search by Name Section */}
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-900 mb-3">Search by Name</h4>
+                  <div className="relative">
+                    <AiOutlineSearch className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Input
+                      placeholder="Search chats and participants..."
+                      className="pl-10 border-gray-200 focus:border-green-300 focus:ring-green-200"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                    />
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* Tag Filters Section */}
+                <div className="flex-1 overflow-hidden flex flex-col">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-semibold text-gray-900">Filter by Tags</h4>
+                    {selectedTags.length > 0 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs text-gray-500 hover:text-gray-700 h-auto p-1"
+                        onClick={() => setSelectedTags([])}
+                      >
+                        Clear all
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Tag Search */}
+                  <div className="relative mb-4">
+                    <AiOutlineSearch className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Input
+                      placeholder="Search tags..."
+                      className="pl-10 border-gray-200 focus:border-green-300 focus:ring-green-200"
+                      value={tagSearch}
+                      onChange={(e) => setTagSearch(e.target.value)}
+                    />
+                    {tagSearch && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 h-6 w-6 p-0 text-gray-400 hover:text-gray-600"
+                        onClick={() => setTagSearch("")}
+                      >
+                        <AiOutlineClose className="h-3 w-3" />
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Selected Tags Display */}
+                  {selectedTags.length > 0 && (
+                    <div className="mb-4">
+                      <p className="text-xs text-gray-500 mb-2">Selected ({selectedTags.length}):</p>
+                      <div className="flex flex-wrap gap-1">
+                        {selectedTags.map((tag) => {
+                          const getTagColor = (tag: string) => {
+                            switch (tag.toLowerCase()) {
+                              case 'demo':
+                                return 'bg-orange-100 text-orange-700 border-orange-200';
+                              case 'internal':
+                                return 'bg-green-100 text-green-700 border-green-200';
+                              case 'signup':
+                                return 'bg-blue-100 text-blue-700 border-blue-200';
+                              case 'content':
+                                return 'bg-purple-100 text-purple-700 border-purple-200';
+                              default:
+                                return 'bg-gray-100 text-gray-700 border-gray-200';
+                            }
+                          };
+
+                          return (
+                            <Badge
+                              key={tag}
+                              variant="outline"
+                              className={`px-2 py-1 text-xs cursor-pointer border ${getTagColor(tag)} hover:opacity-80`}
+                              onClick={() => setSelectedTags(selectedTags.filter(t => t !== tag))}
+                            >
+                              {tag}
+                              <AiOutlineClose className="ml-1 h-3 w-3" />
+                            </Badge>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Available Tags List */}
+                  <div className="flex-1 overflow-y-auto">
+                    <p className="text-xs text-gray-500 mb-2">Available tags:</p>
+                    <div className="space-y-2">
+                      {availableTags
+                        .filter(tag => 
+                          !tagSearch || tag.toLowerCase().includes(tagSearch.toLowerCase())
+                        )
+                        .map((tag) => {
+                          const isSelected = selectedTags.includes(tag);
+                          const getTagColor = (tag: string) => {
+                            switch (tag.toLowerCase()) {
+                              case 'demo':
+                                return 'bg-orange-50 border-orange-200 text-orange-700';
+                              case 'internal':
+                                return 'bg-green-50 border-green-200 text-green-700';
+                              case 'signup':
+                                return 'bg-blue-50 border-blue-200 text-blue-700';
+                              case 'content':
+                                return 'bg-purple-50 border-purple-200 text-purple-700';
+                              default:
+                                return 'bg-gray-50 border-gray-200 text-gray-700';
+                            }
+                          };
+
+                          return (
+                            <div
+                              key={tag}
+                              className={`flex items-center space-x-3 p-3 rounded-lg border cursor-pointer transition-colors hover:bg-opacity-80 ${
+                                isSelected 
+                                  ? getTagColor(tag)
+                                  : 'bg-white border-gray-200 hover:bg-gray-50'
+                              }`}
+                              onClick={() => {
+                                if (isSelected) {
+                                  setSelectedTags(selectedTags.filter(t => t !== tag));
+                                } else {
+                                  setSelectedTags([...selectedTags, tag]);
+                                }
+                              }}
+                            >
+                              <Checkbox
+                                checked={isSelected}
+                                onChange={() => {}}
+                                className="data-[state=checked]:bg-green-600 data-[state=checked]:border-green-600"
+                              />
+                              <span className="text-sm font-medium flex-1">{tag}</span>
+                              <span className="text-xs text-gray-500">
+                                {chats.filter(chat => chat.tags?.includes(tag)).length}
+                              </span>
+                            </div>
+                          );
+                        })}
+                    </div>
+
+                    {tagSearch && availableTags.filter(tag => 
+                      tag.toLowerCase().includes(tagSearch.toLowerCase())
+                    ).length === 0 && (
+                      <div className="text-center py-4">
+                        <p className="text-sm text-gray-500">No tags found matching "{tagSearch}"</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer Actions */}
+              <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+                <div className="text-xs text-gray-500">
+                  {filteredChats.length} of {chats.length} chats
+                </div>
+                <div className="flex space-x-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={() => {
-                      setFilter("");
-                      setShowFilterDialog(false);
+                      setSearch("");
+                      setSelectedTags([]);
+                      setTagSearch("");
                     }}
                   >
-                    All
-                  </Badge>
-                  {availableTags.map((tag) => {
-                    const getTagColor = (tag: string) => {
-                      switch (tag.toLowerCase()) {
-                        case 'demo':
-                          return 'bg-orange-100 text-orange-700 hover:bg-orange-200';
-                        case 'internal':
-                          return 'bg-green-100 text-green-700 hover:bg-green-200';
-                        case 'signup':
-                          return 'bg-blue-100 text-blue-700 hover:bg-blue-200';
-                        case 'content':
-                          return 'bg-purple-100 text-purple-700 hover:bg-purple-200';
-                        default:
-                          return 'bg-gray-100 text-gray-700 hover:bg-gray-200';
-                      }
-                    };
-
-                    return (
-                      <Badge
-                        key={tag}
-                        variant={filter === tag ? "default" : "outline"}
-                        className={`cursor-pointer ${filter !== tag ? getTagColor(tag) : ''}`}
-                        onClick={() => {
-                          setFilter(tag);
-                          setShowFilterDialog(false);
-                        }}
-                      >
-                        {tag}
-                      </Badge>
-                    );
-                  })}
+                    Reset
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="bg-green-600 hover:bg-green-700"
+                    onClick={() => setShowFilterDialog(false)}
+                  >
+                    Apply Filters
+                  </Button>
                 </div>
               </div>
             </DialogContent>
@@ -214,9 +357,9 @@ export function ChatSidebar() {
             />
           </div>
 
-          {filter && (
+          {selectedTags.length > 0 && (
             <Badge variant="secondary" className="text-xs bg-green-100 text-green-700 h-6 px-2">
-              Filtered
+              {selectedTags.length} selected
             </Badge>
           )}
 

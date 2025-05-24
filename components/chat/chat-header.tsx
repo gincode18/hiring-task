@@ -4,7 +4,6 @@ import {
   AiOutlineSearch,
   AiOutlinePhone,
   AiOutlineMore,
-  AiOutlineInfoCircle,
 } from "react-icons/ai";
 import { HiMiniSparkles } from "react-icons/hi2";
 import { Badge } from "@/components/ui/badge";

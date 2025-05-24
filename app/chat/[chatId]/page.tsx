@@ -7,6 +7,7 @@ import { ChatMessages } from "@/components/chat/chat-messages";
 import { ChatInput } from "@/components/chat/chat-input";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/components/providers/auth-provider";
+import { useChat } from "@/components/providers/chat-provider";
 import { useRouter } from "next/navigation";
 import { Database } from "@/lib/database.types";
 import { Spinner } from "@/components/ui/spinner";
@@ -26,6 +27,7 @@ interface ChatPageProps {
 
 export default function ChatPage({ params }: ChatPageProps) {
   const { user, isLoading: authLoading } = useAuth();
+  const { setSelectedChat } = useChat();
   const router = useRouter();
   const [chat, setChat] = useState<ChatWithParticipants | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -69,6 +71,7 @@ export default function ChatPage({ params }: ChatPageProps) {
         }
 
         setChat(data);
+        setSelectedChat(data); // Set the selected chat in context
       } catch (err) {
         console.error("Unexpected error:", err);
         setError("Failed to load chat");
@@ -78,7 +81,14 @@ export default function ChatPage({ params }: ChatPageProps) {
     };
 
     fetchChat();
-  }, [chatId, user, authLoading, router]);
+  }, [chatId, user, authLoading, router, setSelectedChat]);
+
+  // Clean up selected chat when leaving the page
+  useEffect(() => {
+    return () => {
+      setSelectedChat(null);
+    };
+  }, [setSelectedChat]);
 
   if (authLoading || isLoading) {
     return (
