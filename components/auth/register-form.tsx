@@ -49,7 +49,10 @@ export function RegisterForm() {
   const onSubmit = async (data: FormValues) => {
     setIsLoading(true);
     try {
+      console.log("profilePictureUrl", profilePictureUrl);
       await signUp(data.email, data.password, data.fullName, profilePictureUrl);
+      console.log("After signUp");
+      console.log("data", data);
       toast({
         title: "Success",
         description: "Your account has been created",

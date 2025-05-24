@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { Session, User } from "@supabase/supabase-js";
@@ -22,6 +22,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
+  
+  // Flag to track if we're in the middle of a signup process
+  const signupDataRef = useRef<{fullName: string, avatarUrl?: string | null} | null>(null);
 
   const createProfile = async (user: User, fullName?: string, avatarUrl?: string | null) => {
     try {
@@ -33,6 +36,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .single();
 
       if (!existingProfile) {
+        // Create new profile
         const { error: profileError } = await supabase
           .from("profiles")
           .insert({
@@ -49,8 +53,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         console.log("Profile created successfully for user:", user.id);
         return true;
+      } else {
+        // Profile exists, update it if we have avatar data from signup
+        if (avatarUrl) {
+          const { error: updateError } = await supabase
+            .from("profiles")
+            .update({
+              avatar_url: avatarUrl,
+              full_name: fullName || user.user_metadata?.full_name || 'User',
+            })
+            .eq("id", user.id);
+
+          if (updateError) {
+            console.error("Error updating profile:", updateError);
+            return false;
+          }
+          console.log("Profile updated successfully for user:", user.id);
+        }
+        return true;
       }
-      return true;
     } catch (error) {
       console.error("Error in createProfile:", error);
       return false;
@@ -93,8 +114,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           try {
             // Initialize user session and clear previous data
             await userDataDAO.initializeUserSession(session.user.id);
-            // Handle profile creation for signed in users
-            await createProfile(session.user);
+            
+            console.log("SIGNED_IN event, checking signupDataRef:", signupDataRef.current);
+            console.log("Session user ID:", session.user.id);
+            
+            // Check if this is part of a signup process
+            if (signupDataRef.current) {
+              // This is a signup, create/update profile with the stored data
+              const signupData = signupDataRef.current;
+              console.log("Creating/updating profile with signup data:", signupData);
+              await createProfile(session.user, signupData.fullName, signupData.avatarUrl);
+              signupDataRef.current = null; // Clear the flag
+            } else {
+              // This is a regular sign in, create profile without avatar
+              console.log("Regular sign in, creating profile without avatar");
+              await createProfile(session.user);
+            }
           } catch (error) {
             console.error("Error during sign in with DAO:", error);
           }
@@ -102,6 +137,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           try {
             // Terminate user session and clear all data
             await userDataDAO.terminateUserSession();
+            signupDataRef.current = null; // Clear signup flag on signout
           } catch (error) {
             console.error("Error during sign out with DAO:", error);
           }
@@ -154,6 +190,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(true);
     
     try {
+      console.log("signUp called with avatarUrl:", avatarUrl);
+      
+      // Store signup data BEFORE calling supabase.auth.signUp
+      signupDataRef.current = {
+        fullName,
+        avatarUrl
+      };
+      console.log("signupDataRef set before signup:", signupDataRef.current);
+      
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -170,16 +215,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // If user is immediately available (no email confirmation required)
       if (data.user && data.session) {
-        // Wait a bit for the session to be established
-        setTimeout(async () => {
-          await createProfile(data.user!, fullName, avatarUrl);
-        }, 1000);
+        console.log("User created successfully, signupDataRef is ready for auth state change");
         router.push("/chat");
       } else {
         router.push("/login");
       }
 
     } catch (error) {
+      // Clear the ref on error
+      signupDataRef.current = null;
       throw error;
     } finally {
       setIsLoading(false);

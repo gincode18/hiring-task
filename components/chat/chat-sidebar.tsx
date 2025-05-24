@@ -142,13 +142,13 @@ export function ChatSidebar() {
     <div className="flex h-full w-80 flex-col bg-white border-r border-gray-100 relative">
       {/* Header with Custom Filter, Save, Search, and Filtered */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100">
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-1 flex-1 min-w-0">
           <Dialog open={showFilterDialog} onOpenChange={setShowFilterDialog}>
             <DialogTrigger asChild>
               <Button
                 variant="ghost"
                 size="sm"
-                className="px-2 py-1 text-xs font-medium text-green-600 hover:bg-green-50 flex items-center gap-1 h-7"
+                className="px-2 py-1 text-xs font-medium text-green-600 hover:bg-green-50 flex items-center gap-1 h-7 shrink-0"
               >
                 <AiOutlineFilter className="h-3 w-3" />
                 Custom filter
@@ -349,7 +349,7 @@ export function ChatSidebar() {
           <Button
             variant="ghost"
             size="sm"
-            className="px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 flex items-center gap-1 h-7"
+            className="px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 flex items-center gap-1 h-7 shrink-0"
           >
             Save
           </Button>
@@ -357,7 +357,7 @@ export function ChatSidebar() {
           <Button
             variant="ghost"
             size="sm"
-            className={`px-2 py-1 text-xs font-medium flex items-center gap-1 h-7 transition-colors ${
+            className={`px-2 py-1 text-xs font-medium flex items-center gap-1 h-7 transition-colors shrink-0 ${
               isSearchExpanded
                 ? "text-green-600 bg-green-50 hover:bg-green-100"
                 : "text-gray-600 hover:bg-gray-50"
@@ -368,31 +368,31 @@ export function ChatSidebar() {
             Search
           </Button>
 
-          <Button
-            variant="ghost"
-            size="sm"
-            className="px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 flex items-center gap-1 h-7"
-          >
-            Filtered
-          </Button>
+          {/* Show filtered indicator when filters are active */}
+          {(selectedTags.length > 0 || search) && (
+            <Badge
+              variant="outline"
+              className="text-xs bg-green-50 text-green-700 border-green-200 shrink-0"
+            >
+              Filtered ({filteredChats.length})
+            </Badge>
+          )}
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-2 ml-2">
           {/* Sync status indicator */}
-          {syncing && <div className="text-xs text-blue-600">Syncing...</div>}
+          {syncing && (
+            <div className="text-xs text-blue-600 whitespace-nowrap">
+              Syncing...
+            </div>
+          )}
 
           {/* Offline indicator */}
-          {!isOnline && <div className="text-xs text-yellow-600">Offline</div>}
-
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 w-7 p-0 text-green-600 hover:bg-green-50 hover:text-green-700 transition-colors"
-            onClick={() => setShowNewChatDialog(true)}
-            title="Start new conversation"
-          >
-            <AiOutlinePlus className="h-4 w-4" />
-          </Button>
+          {!isOnline && (
+            <div className="text-xs text-yellow-600 whitespace-nowrap">
+              Offline
+            </div>
+          )}
         </div>
       </div>
 
