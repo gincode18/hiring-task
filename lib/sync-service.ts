@@ -274,13 +274,15 @@ class SyncService {
       }
 
       // If no cached chats, fetch from Supabase directly
+      const chatIds = await this.getUserChatIds(userId);
+      
       const { data: remoteChats, error } = await supabase
         .from("chats")
         .select(`
           *,
           chat_participants(user_id, profiles(*))
         `)
-        .in("id", await this.getUserChatIds(userId))
+        .in("id", chatIds)
         .order("last_message_at", { ascending: false });
 
       if (error) {
@@ -289,10 +291,47 @@ class SyncService {
 
       const chats = (remoteChats as Chat[]) || [];
       
+      // Fetch messages for each chat
+      const chatsWithMessages = await Promise.all(
+        chats.map(async (chat) => {
+          try {
+            // Fetch recent messages for this chat (last 50 messages should be enough for unread counting)
+            const { data: messages, error: messagesError } = await supabase
+              .from("messages")
+              .select("*, profiles(*)")
+              .eq("chat_id", chat.id)
+              .order("created_at", { ascending: false })
+              .limit(50);
+
+            if (messagesError) {
+              console.warn(`Failed to fetch messages for chat ${chat.id}:`, messagesError);
+              return { ...chat, messages: [] };
+            }
+
+            console.log(`Loaded ${messages?.length || 0} messages for chat ${chat.id}`);
+            return {
+              ...chat,
+              messages: (messages as Message[]) || []
+            };
+          } catch (chatError) {
+            console.warn(`Error fetching messages for chat ${chat.id}:`, chatError);
+            return { ...chat, messages: [] };
+          }
+        })
+      );
+      
       // Cache the chats for future use (if IndexedDB is available)
-      if (chats.length > 0) {
+      if (chatsWithMessages.length > 0) {
         try {
-          await indexedDBService.saveChats(chats);
+          await indexedDBService.saveChats(chatsWithMessages);
+
+          // Store messages for each chat
+          for (const chat of chatsWithMessages) {
+            if (chat.messages && chat.messages.length > 0) {
+              await indexedDBService.saveMessages(chat.messages);
+            }
+          }
+
           await indexedDBService.updateSyncStatus('chats');
         } catch (cacheError) {
           console.warn("Failed to cache chats:", cacheError);
@@ -300,20 +339,22 @@ class SyncService {
         }
       }
 
-      return chats;
+      return chatsWithMessages;
 
     } catch (error) {
       console.error("Error getting chats:", error);
       
       // If IndexedDB fails entirely, fetch directly from Supabase
       try {
+        const chatIds = await this.getUserChatIds(userId);
+        
         const { data: remoteChats, error: supabaseError } = await supabase
           .from("chats")
           .select(`
             *,
             chat_participants(user_id, profiles(*))
           `)
-          .in("id", await this.getUserChatIds(userId))
+          .in("id", chatIds)
           .order("last_message_at", { ascending: false });
 
         if (supabaseError) {
@@ -642,13 +683,44 @@ class SyncService {
       const chats = (remoteChats as Chat[]) || [];
       console.log("syncService.getFreshChats - Got fresh chats:", chats.length);
       
+      // Fetch messages for each chat
+      const chatsWithMessages = await Promise.all(
+        chats.map(async (chat) => {
+          try {
+            // Fetch recent messages for this chat (last 50 messages should be enough for unread counting)
+            const { data: messages, error: messagesError } = await supabase
+              .from("messages")
+              .select("*, profiles(*)")
+              .eq("chat_id", chat.id)
+              .order("created_at", { ascending: false })
+              .limit(50);
+
+            if (messagesError) {
+              console.warn(`Failed to fetch messages for chat ${chat.id}:`, messagesError);
+              return { ...chat, messages: [] };
+            }
+
+            console.log(`Loaded ${messages?.length || 0} messages for chat ${chat.id}`);
+            return {
+              ...chat,
+              messages: (messages as Message[]) || []
+            };
+          } catch (chatError) {
+            console.warn(`Error fetching messages for chat ${chat.id}:`, chatError);
+            return { ...chat, messages: [] };
+          }
+        })
+      );
+
+      console.log("syncService.getFreshChats - Loaded messages for all chats");
+      
       // Update IndexedDB cache with fresh data
-      if (chats.length > 0) {
+      if (chatsWithMessages.length > 0) {
         try {
-          await indexedDBService.saveChats(chats);
+          await indexedDBService.saveChats(chatsWithMessages);
 
           // Store chat participants and profiles
-          for (const chat of chats) {
+          for (const chat of chatsWithMessages) {
             if (chat.chat_participants) {
               for (const participant of chat.chat_participants) {
                 // Add chat_id to participant object for IndexedDB key path
@@ -662,16 +734,21 @@ class SyncService {
                 }
               }
             }
+
+            // Store messages for this chat
+            if (chat.messages && chat.messages.length > 0) {
+              await indexedDBService.saveMessages(chat.messages);
+            }
           }
 
           await indexedDBService.updateSyncStatus('chats');
-          console.log("syncService.getFreshChats - Updated cache with fresh chats");
+          console.log("syncService.getFreshChats - Updated cache with fresh chats and messages");
         } catch (cacheError) {
           console.warn("Failed to update cache with fresh chats:", cacheError);
         }
       }
 
-      return chats;
+      return chatsWithMessages;
 
     } catch (error) {
       console.error("Error getting fresh chats:", error);

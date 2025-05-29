@@ -290,7 +290,7 @@ class IndexedDBService {
         request.onsuccess = async () => {
           const chats = request.result;
           
-          // For each chat, reconstruct the chat_participants with profiles
+          // For each chat, reconstruct the chat_participants with profiles and load messages
           const enrichedChats = await Promise.all(
             chats.map(async (chat) => {
               const participants = await this.getChatParticipants(chat.id);
@@ -311,10 +311,14 @@ class IndexedDBService {
                   };
                 })
               );
+
+              // Load messages for this chat
+              const messages = await this.getMessagesByChatId(chat.id);
               
               return {
                 ...chat,
-                chat_participants: participantsWithProfiles
+                chat_participants: participantsWithProfiles,
+                messages: messages
               };
             })
           );

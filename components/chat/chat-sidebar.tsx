@@ -125,6 +125,18 @@ export function ChatSidebar() {
           await refreshFreshChats();
         }
       )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "messages",
+        },
+        async () => {
+          console.log("Message updated (read status change), refreshing chats for unread count update");
+          await refreshFreshChats();
+        }
+      )
       .subscribe();
 
     return () => {

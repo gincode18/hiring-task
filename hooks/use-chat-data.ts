@@ -347,6 +347,16 @@ export function useChatData(options: UseChatDataOptions = {}): [ChatDataState, C
             : msg
         )
       }));
+
+      // Also refresh chats to update unread counts in the sidebar
+      if (user?.id) {
+        try {
+          await refreshFreshChats();
+          console.log("Refreshed chat list after marking messages as read");
+        } catch (error) {
+          console.warn("Failed to refresh chats after marking messages as read:", error);
+        }
+      }
     } catch (error) {
       console.error("Error marking messages as read:", error);
       setState(prev => ({ 
@@ -354,7 +364,7 @@ export function useChatData(options: UseChatDataOptions = {}): [ChatDataState, C
         error: error instanceof Error ? error.message : "Failed to mark messages as read"
       }));
     }
-  }, []);
+  }, [user?.id, refreshFreshChats]);
 
   // Update message
   const updateMessage = useCallback(async (messageId: string, newContent: string) => {
