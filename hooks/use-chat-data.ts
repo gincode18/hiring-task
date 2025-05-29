@@ -25,6 +25,8 @@ interface ChatDataActions {
   refreshChats: () => Promise<void>;
   refreshFreshChats: () => Promise<void>;
   markMessagesAsRead: (messageIds: string[]) => Promise<void>;
+  updateMessage: (messageId: string, newContent: string) => Promise<void>;
+  deleteMessage: (messageId: string) => Promise<void>;
   forceSync: () => Promise<void>;
   searchMessages: (query: string) => Promise<Message[]>;
   clearCache: () => Promise<void>;
@@ -354,6 +356,50 @@ export function useChatData(options: UseChatDataOptions = {}): [ChatDataState, C
     }
   }, []);
 
+  // Update message
+  const updateMessage = useCallback(async (messageId: string, newContent: string) => {
+    if (!user?.id || !chatId || !messageId || !newContent.trim()) return;
+
+    try {
+      await syncService.updateMessageOptimistically(messageId, newContent.trim());
+      
+      // Update local state immediately to reflect updated content
+      setState(prev => ({
+        ...prev,
+        messages: prev.messages.map(msg => 
+          msg.id === messageId ? { ...msg, content: newContent.trim() } : msg
+        )
+      }));
+    } catch (error) {
+      console.error("Error updating message:", error);
+      setState(prev => ({ 
+        ...prev,
+        error: error instanceof Error ? error.message : "Failed to update message"
+      }));
+    }
+  }, [user?.id, chatId]);
+
+  // Delete message
+  const deleteMessage = useCallback(async (messageId: string) => {
+    if (!user?.id || !chatId || !messageId) return;
+
+    try {
+      await syncService.deleteMessageOptimistically(messageId);
+      
+      // Update local state immediately to reflect deleted status
+      setState(prev => ({
+        ...prev,
+        messages: prev.messages.filter(msg => msg.id !== messageId)
+      }));
+    } catch (error) {
+      console.error("Error deleting message:", error);
+      setState(prev => ({ 
+        ...prev,
+        error: error instanceof Error ? error.message : "Failed to delete message"
+      }));
+    }
+  }, [user?.id, chatId]);
+
   // Actions object
   const actions: ChatDataActions = {
     sendMessage,
@@ -366,6 +412,8 @@ export function useChatData(options: UseChatDataOptions = {}): [ChatDataState, C
     clearCache,
     getSyncInfo,
     markMessagesAsRead,
+    updateMessage,
+    deleteMessage,
   };
 
   return [state, actions];

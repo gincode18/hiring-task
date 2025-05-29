@@ -373,6 +373,114 @@ class SyncService {
     }
   }
 
+  // Optimistic updates for editing messages
+  async updateMessageOptimistically(messageId: string, newContent: string): Promise<Message | null> {
+    try {
+      console.log("syncService.updateMessageOptimistically - Updating message:", messageId, "with content:", newContent);
+      
+      // First, get the current message from cache
+      const currentMessage = await indexedDBService.getMessage(messageId);
+      if (!currentMessage) {
+        throw new Error("Message not found in cache");
+      }
+
+      // Create updated message for optimistic update
+      const updatedMessage: Message = {
+        ...currentMessage,
+        content: newContent,
+      };
+
+      // Save optimistically to IndexedDB
+      await indexedDBService.saveMessage(updatedMessage);
+      console.log("syncService.updateMessageOptimistically - Updated message in cache");
+
+      // Try to update in Supabase
+      const { data: savedMessage, error } = await supabase
+        .from("messages")
+        .update({ 
+          content: newContent
+        })
+        .eq("id", messageId)
+        .select("*, profiles(*)")
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      // Update cache with server response
+      if (savedMessage) {
+        await indexedDBService.saveMessage(savedMessage as Message);
+        console.log("syncService.updateMessageOptimistically - Updated message from server response");
+        return savedMessage as Message;
+      }
+
+      return updatedMessage;
+
+    } catch (error) {
+      console.error("Error updating message:", error);
+      
+      // Try to revert the optimistic update
+      try {
+        const originalMessage = await indexedDBService.getMessage(messageId);
+        if (originalMessage) {
+          // Revert to original content
+          const revertedMessage = { ...originalMessage };
+          await indexedDBService.saveMessage(revertedMessage);
+        }
+      } catch (revertError) {
+        console.error("Failed to revert optimistic update:", revertError);
+      }
+      
+      throw error;
+    }
+  }
+
+  // Optimistic updates for deleting messages
+  async deleteMessageOptimistically(messageId: string): Promise<void> {
+    try {
+      console.log("syncService.deleteMessageOptimistically - Deleting message:", messageId);
+      
+      // First, get the current message from cache for potential rollback
+      const messageToDelete = await indexedDBService.getMessage(messageId);
+      if (!messageToDelete) {
+        throw new Error("Message not found in cache");
+      }
+
+      // Delete optimistically from IndexedDB
+      await indexedDBService.deleteMessage(messageId);
+      console.log("syncService.deleteMessageOptimistically - Deleted message from cache");
+
+      // Try to delete from Supabase
+      const { error } = await supabase
+        .from("messages")
+        .delete()
+        .eq("id", messageId);
+
+      if (error) {
+        throw error;
+      }
+
+      console.log("syncService.deleteMessageOptimistically - Successfully deleted message from server");
+
+    } catch (error) {
+      console.error("Error deleting message:", error);
+      
+      // Try to restore the message if deletion failed
+      try {
+        const messageToDelete = await indexedDBService.getMessage(messageId);
+        if (!messageToDelete) {
+          // We need to restore from a backup - in a real app, you might want to store this differently
+          console.warn("Cannot restore deleted message - no backup available");
+        }
+      } catch (restoreError) {
+        console.error("Failed to restore deleted message:", restoreError);
+      }
+      
+      throw error;
+    }
+  }
+
   // Schedule background syncs with debouncing
   private scheduleSyncMessages(chatId: string, delay = 2000): void {
     const key = `messages-${chatId}`;

@@ -67,7 +67,7 @@ export function ChatMessages({ chatId }: ChatMessagesProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Use our new IndexedDB-powered hook
-  const [{ messages: cachedMessages, loading, error, syncing }, { refreshFreshMessages, markMessagesAsRead }] = useChatData({
+  const [{ messages: cachedMessages, loading, error, syncing }, { refreshFreshMessages, markMessagesAsRead, updateMessage, deleteMessage }] = useChatData({
     chatId,
     autoSync: true,
     syncInterval: 30000, // Sync every 30 seconds
@@ -196,6 +196,8 @@ export function ChatMessages({ chatId }: ChatMessagesProps) {
           key={message.id}
           message={message}
           isOwn={message.user_id === user?.id}
+          onUpdateMessage={updateMessage}
+          onDeleteMessage={deleteMessage}
         />
       );
     });

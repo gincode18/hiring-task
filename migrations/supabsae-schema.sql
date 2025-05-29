@@ -196,6 +196,12 @@ CREATE POLICY "Users can mark messages as read in chats they participate in"
     user_participates_in_chat(chat_id, auth.uid())
   );
 
+CREATE POLICY "Users can delete their own messages"
+  ON messages
+  FOR DELETE
+  TO authenticated
+  USING (user_id = auth.uid());
+
 -- Create function to update last_message_at in chat when a message is inserted
 CREATE OR REPLACE FUNCTION update_last_message_timestamp()
 RETURNS TRIGGER AS $$
