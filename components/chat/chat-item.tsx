@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { AiOutlinePhone, AiOutlineCheck, AiOutlineCheckCircle } from "react-icons/ai";
 import Image from "next/image";
 import { useAuth } from "@/components/providers/auth-provider";
+import { useOnlineStatus } from "@/hooks/use-chat-data";
 
 type ChatWithParticipants = Database["public"]["Tables"]["chats"]["Row"] & {
   chat_participants: Array<{
@@ -26,6 +27,7 @@ export function ChatItem({ chat }: ChatItemProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { user } = useAuth();
+  const { isUserOnlineById } = useOnlineStatus();
   const isActive = pathname === `/chat/${chat.id}`;
 
   // Get other participants (excluding current user)
@@ -117,6 +119,15 @@ export function ChatItem({ chat }: ChatItemProps) {
     ? otherParticipants[0].profiles.avatar_url
     : null;
 
+  // For direct messages, check if the other user is online
+  const otherUser = isDM && otherParticipants.length > 0 ? otherParticipants[0] : null;
+  const isOtherUserOnline = otherUser ? isUserOnlineById(otherUser.user_id) : false;
+
+  // For group chats, check if any participants are online
+  const hasOnlineParticipants = !isDM && otherParticipants.some(p => isUserOnlineById(p.user_id));
+  const onlineParticipantsCount = !isDM ? otherParticipants.filter(p => isUserOnlineById(p.user_id)).length : 0;
+  const shouldShowOnlineIndicator = isDM ? isOtherUserOnline : hasOnlineParticipants;
+
   return (
     <div
       className={cn(
@@ -160,7 +171,7 @@ export function ChatItem({ chat }: ChatItemProps) {
         )}
         
         {/* Online status indicator - only show if no unread messages */}
-        {unreadCount === 0 && (
+        {unreadCount === 0 && shouldShowOnlineIndicator && (
           <div className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 bg-green-500 border-2 border-white rounded-full" />
         )}
       </div>
@@ -273,6 +284,13 @@ export function ChatItem({ chat }: ChatItemProps) {
               )}>
                 {chatPreview}
               </span>
+              
+              {/* Online status for group chats */}
+              {!isDM && onlineParticipantsCount > 0 && (
+                <span className="text-[11px] text-green-600 ml-2">
+                  • {onlineParticipantsCount} online
+                </span>
+              )}
             </div>
           </div>
         </div>

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { syncService, type SyncResult } from "@/lib/sync-service";
 import { type Message, type Chat } from "@/lib/indexeddb";
 import { useAuth } from "@/components/providers/auth-provider";
+import { supabase } from "@/lib/supabase";
 
 interface UseChatDataOptions {
   chatId?: string;
@@ -506,5 +507,196 @@ export function useStorageInfo() {
     storageInfo,
     loading,
     refresh: refreshStorageInfo,
+  };
+}
+
+// Hook for managing user online status
+export function useOnlineStatus() {
+  const { user } = useAuth();
+  const [userStatuses, setUserStatuses] = useState<Record<string, boolean>>({});
+  const [isOnline, setIsOnline] = useState(true);
+  const updateIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Function to check if a user is online based on last_seen
+  const isUserOnline = useCallback((lastSeen: string | null): boolean => {
+    if (!lastSeen) {
+      console.log("⚪ User has no last_seen timestamp - returning OFFLINE");
+      return false;
+    }
+    
+    const lastSeenTime = new Date(lastSeen).getTime();
+    const now = new Date().getTime();
+    const fiveMinutesAgo = now - (5 * 60 * 1000); // 5 minutes in milliseconds
+    
+    const isOnline = lastSeenTime > fiveMinutesAgo;
+    const minutesAgo = Math.floor((now - lastSeenTime) / (60 * 1000));
+    
+    console.log(`⏰ Last seen: ${lastSeen} (${minutesAgo} minutes ago) - User is ${isOnline ? 'ONLINE' : 'OFFLINE'}`);
+    
+    return isOnline;
+  }, []);
+
+  // Update current user's last_seen timestamp
+  const updateLastSeen = useCallback(async () => {
+    if (!user?.id || !isOnline) {
+      console.log("⏭️ Skipping last_seen update - user:", !!user?.id, "online:", isOnline);
+      return;
+    }
+
+    try {
+      console.log("🔄 Updating last_seen for user:", user.id);
+      const { error } = await supabase
+        .from("profiles")
+        .update({ last_seen: new Date().toISOString() })
+        .eq("id", user.id);
+
+      if (error) {
+        console.error("❌ Error updating last_seen:", error);
+      } else {
+        console.log("✅ Successfully updated last_seen for user:", user.id);
+      }
+    } catch (error) {
+      console.error("❌ Error updating last_seen:", error);
+    }
+  }, [user?.id, isOnline]);
+
+  // Fetch initial online statuses for users in chats
+  const fetchUserStatuses = useCallback(async () => {
+    if (!user?.id) return;
+
+    try {
+      console.log("🔍 Fetching user statuses for user:", user.id);
+      // Get all unique user IDs from chat participants
+      const { data: chatParticipants, error } = await supabase
+        .from("chat_participants")
+        .select(`
+          user_id,
+          profiles(id, last_seen)
+        `)
+        .neq("user_id", user.id); // Exclude current user
+
+      if (error) {
+        console.error("Error fetching user statuses:", error);
+        return;
+      }
+
+      console.log("📋 Found chat participants:", chatParticipants);
+
+      // Build status map
+      const statusMap: Record<string, boolean> = {};
+      chatParticipants.forEach((participant: any) => {
+        if (participant.profiles) {
+          const isOnline = isUserOnline(participant.profiles.last_seen);
+          statusMap[participant.user_id] = isOnline;
+          console.log(`👤 User ${participant.user_id} (last_seen: ${participant.profiles.last_seen}) is ${isOnline ? 'ONLINE' : 'OFFLINE'}`);
+        }
+      });
+
+      setUserStatuses(statusMap);
+      console.log("🎯 Updated user online statuses:", statusMap);
+    } catch (error) {
+      console.error("Error fetching user statuses:", error);
+    }
+  }, [user?.id, isUserOnline]);
+
+  // Set up real-time subscription for profile changes (last_seen updates)
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const subscription = supabase
+      .channel("profiles-online-status")
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "profiles",
+        },
+        (payload: any) => {
+          const updatedProfile = payload.new;
+          
+          // Don't update status for current user
+          if (updatedProfile.id === user.id) return;
+
+          const isOnline = isUserOnline(updatedProfile.last_seen);
+          
+          setUserStatuses(prev => ({
+            ...prev,
+            [updatedProfile.id]: isOnline
+          }));
+
+          console.log(`User ${updatedProfile.id} is now ${isOnline ? 'online' : 'offline'}`);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, [user?.id, isUserOnline]);
+
+  // Track online/offline state
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleOnline = () => {
+      setIsOnline(true);
+      updateLastSeen(); // Update immediately when coming online
+    };
+
+    const handleOffline = () => {
+      setIsOnline(false);
+    };
+
+    // Set initial state
+    setIsOnline(navigator.onLine);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [updateLastSeen]);
+
+  // Periodic last_seen updates
+  useEffect(() => {
+    if (!user?.id) return;
+
+    // Update immediately
+    updateLastSeen();
+
+    // Set up periodic updates every 2 minutes
+    updateIntervalRef.current = setInterval(() => {
+      updateLastSeen();
+    }, 2 * 60 * 1000); // 2 minutes
+
+    return () => {
+      if (updateIntervalRef.current) {
+        clearInterval(updateIntervalRef.current);
+      }
+    };
+  }, [user?.id, updateLastSeen]);
+
+  // Fetch initial statuses
+  useEffect(() => {
+    fetchUserStatuses();
+  }, [fetchUserStatuses]);
+
+  // Helper function to check if a specific user is online
+  const isUserOnlineById = useCallback((userId: string): boolean => {
+    return userStatuses[userId] || false;
+  }, [userStatuses]);
+
+  // Get online users count
+  const onlineUsersCount = Object.values(userStatuses).filter(Boolean).length;
+
+  return {
+    userStatuses,
+    isUserOnlineById,
+    onlineUsersCount,
+    refreshStatuses: fetchUserStatuses,
+    isOnline,
   };
 } 
