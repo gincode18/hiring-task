@@ -1,8 +1,9 @@
 import { format } from "date-fns";
-import { AiOutlineCheck, AiOutlineDownload, AiOutlineFile, AiOutlineFileImage, AiOutlineAudio } from "react-icons/ai";
+import { AiOutlineCheck, AiOutlineDownload, AiOutlineFile, AiOutlineFileImage, AiOutlineAudio, AiOutlineEdit, AiOutlineClose, AiOutlineDelete } from "react-icons/ai";
 import { Avatar } from "@/components/ui/avatar";
 import { Database } from "@/lib/database.types";
 import { cn } from "@/lib/utils";
+import { useState } from "react";
 
 type Message = Database["public"]["Tables"]["messages"]["Row"] & {
   profiles: Database["public"]["Tables"]["profiles"]["Row"];
@@ -11,6 +12,8 @@ type Message = Database["public"]["Tables"]["messages"]["Row"] & {
 interface MessageBubbleProps {
   message: Message;
   isOwn: boolean;
+  onUpdateMessage?: (messageId: string, newContent: string) => Promise<void>;
+  onDeleteMessage?: (messageId: string) => Promise<void>;
 }
 
 interface AttachmentData {
@@ -20,8 +23,73 @@ interface AttachmentData {
   fileType: string;
 }
 
-export function MessageBubble({ message, isOwn }: MessageBubbleProps) {
+export function MessageBubble({ message, isOwn, onUpdateMessage, onDeleteMessage }: MessageBubbleProps) {
   const formattedTime = format(new Date(message.created_at), "HH:mm");
+  const [isEditing, setIsEditing] = useState(false);
+  const [editContent, setEditContent] = useState(message.content);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const handleStartEdit = () => {
+    if (message.type !== 'text') return; // Only allow editing text messages
+    setIsEditing(true);
+    setEditContent(message.content);
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    setEditContent(message.content);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!onUpdateMessage || !editContent.trim() || editContent === message.content) {
+      setIsEditing(false);
+      return;
+    }
+
+    setIsUpdating(true);
+    try {
+      await onUpdateMessage(message.id, editContent.trim());
+      setIsEditing(false);
+    } catch (error) {
+      console.error("Failed to update message:", error);
+      // Keep editing mode open on error
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSaveEdit();
+    } else if (e.key === 'Escape') {
+      handleCancelEdit();
+    }
+  };
+
+  const handleDeleteClick = () => {
+    setShowDeleteConfirm(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!onDeleteMessage) return;
+    
+    setIsDeleting(true);
+    try {
+      await onDeleteMessage(message.id);
+      setShowDeleteConfirm(false);
+    } catch (error) {
+      console.error("Failed to delete message:", error);
+      setIsDeleting(false);
+      // Keep confirmation dialog open on error
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setShowDeleteConfirm(false);
+  };
 
   const renderAttachment = (attachmentData: AttachmentData) => {
     const { fileName, fileUrl, fileSize, fileType } = attachmentData;
@@ -157,10 +225,90 @@ export function MessageBubble({ message, isOwn }: MessageBubbleProps) {
             message.type === "attachment" ? "p-2" : "px-3 py-2",
             isOwn
               ? "bg-green-500 text-white rounded-br-sm"
-              : "bg-white text-gray-800 border border-gray-200 rounded-bl-sm"
+              : "bg-white text-gray-800 border border-gray-200 rounded-bl-sm",
+            "group"
           )}
         >
-          {renderMessageContent()}
+          {isEditing ? (
+            <div className="space-y-2">
+              <textarea
+                value={editContent}
+                onChange={(e) => setEditContent(e.target.value)}
+                onKeyDown={handleKeyDown}
+                className={cn(
+                  "w-full p-2 border rounded-lg resize-none text-sm",
+                  isOwn 
+                    ? "bg-green-400 border-green-300 text-white placeholder-green-200" 
+                    : "bg-white border-gray-300 text-gray-800"
+                )}
+                rows={3}
+                disabled={isUpdating}
+                autoFocus
+              />
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={handleSaveEdit}
+                  disabled={isUpdating || !editContent.trim()}
+                  className={cn(
+                    "flex items-center space-x-1 px-2 py-1 rounded text-xs font-medium transition-colors",
+                    isOwn
+                      ? "bg-green-600 hover:bg-green-700 text-white disabled:bg-green-400"
+                      : "bg-blue-500 hover:bg-blue-600 text-white disabled:bg-blue-300"
+                  )}
+                >
+                  <AiOutlineCheck className="h-3 w-3" />
+                  <span>{isUpdating ? "Saving..." : "Save"}</span>
+                </button>
+                <button
+                  onClick={handleCancelEdit}
+                  disabled={isUpdating}
+                  className={cn(
+                    "flex items-center space-x-1 px-2 py-1 rounded text-xs font-medium transition-colors",
+                    isOwn
+                      ? "bg-green-400 hover:bg-green-500 text-white"
+                      : "bg-gray-500 hover:bg-gray-600 text-white"
+                  )}
+                >
+                  <AiOutlineClose className="h-3 w-3" />
+                  <span>Cancel</span>
+                </button>
+              </div>
+            </div>
+          ) : showDeleteConfirm ? (
+            <div className="space-y-2">
+              <p className={cn("text-sm", isOwn ? "text-white" : "text-gray-800")}>
+                Are you sure you want to delete this message?
+              </p>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={handleDeleteConfirm}
+                  disabled={isDeleting}
+                  className={cn(
+                    "flex items-center space-x-1 px-2 py-1 rounded text-xs font-medium transition-colors",
+                    "bg-red-600 hover:bg-red-700 text-white disabled:bg-red-400"
+                  )}
+                >
+                  <AiOutlineCheck className="h-3 w-3" />
+                  <span>{isDeleting ? "Deleting..." : "Delete"}</span>
+                </button>
+                <button
+                  onClick={handleDeleteCancel}
+                  disabled={isDeleting}
+                  className={cn(
+                    "flex items-center space-x-1 px-2 py-1 rounded text-xs font-medium transition-colors",
+                    isOwn
+                      ? "bg-green-400 hover:bg-green-500 text-white"
+                      : "bg-gray-500 hover:bg-gray-600 text-white"
+                  )}
+                >
+                  <AiOutlineClose className="h-3 w-3" />
+                  <span>Cancel</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            renderMessageContent()
+          )}
           <div
             className={cn(
               "mt-1 flex items-center justify-end space-x-1 text-xs",
@@ -177,6 +325,35 @@ export function MessageBubble({ message, isOwn }: MessageBubbleProps) {
               </div>
             )}
           </div>
+          {/* Edit and Delete buttons - only show for own messages */}
+          {isOwn && (onUpdateMessage || onDeleteMessage) && !isEditing && !showDeleteConfirm && (
+            <div className="absolute top-1 right-1 flex space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              {onUpdateMessage && message.type === 'text' && (
+                <button
+                  onClick={handleStartEdit}
+                  className={cn(
+                    "p-1 rounded-full",
+                    isOwn ? "bg-green-600 hover:bg-green-700 text-white" : "bg-gray-200 hover:bg-gray-300 text-gray-600"
+                  )}
+                  title="Edit message"
+                >
+                  <AiOutlineEdit className="h-3 w-3" />
+                </button>
+              )}
+              {onDeleteMessage && (
+                <button
+                  onClick={handleDeleteClick}
+                  className={cn(
+                    "p-1 rounded-full",
+                    isOwn ? "bg-red-600 hover:bg-red-700 text-white" : "bg-gray-200 hover:bg-gray-300 text-gray-600"
+                  )}
+                  title="Delete message"
+                >
+                  <AiOutlineDelete className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { AiOutlinePhone, AiOutlineCheck, AiOutlineCheckCircle } from "react-icons/ai";
 import Image from "next/image";
 import { useAuth } from "@/components/providers/auth-provider";
+import { useOnlineStatus } from "@/hooks/use-chat-data";
 
 type ChatWithParticipants = Database["public"]["Tables"]["chats"]["Row"] & {
   chat_participants: Array<{
@@ -26,6 +27,7 @@ export function ChatItem({ chat }: ChatItemProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { user } = useAuth();
+  const { isUserOnlineById } = useOnlineStatus();
   const isActive = pathname === `/chat/${chat.id}`;
 
   // Get other participants (excluding current user)
@@ -36,6 +38,19 @@ export function ChatItem({ chat }: ChatItemProps) {
   // Get last message
   const lastMessage = chat.messages.length > 0 
     ? chat.messages.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0] 
+    : null;
+
+  // Count unread messages from other users (not from current user)
+  const unreadMessages = chat.messages.filter(
+    (message) => 
+      !message.is_read && 
+      message.user_id !== user?.id // Only count messages from other users
+  );
+  const unreadCount = unreadMessages.length;
+
+  // Get the most recent unread message for preview (if any)
+  const latestUnreadMessage = unreadMessages.length > 0 
+    ? unreadMessages.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0]
     : null;
 
   // Format date for display
@@ -63,14 +78,28 @@ export function ChatItem({ chat }: ChatItemProps) {
         : "Unknown User")
     : (chat.name || otherParticipants.map(p => p.profiles?.full_name || "Unknown User").join(", "));
 
-  // Get chat preview
-  const chatPreview = lastMessage ? lastMessage.content : "No messages yet";
+  // Get chat preview - prioritize unread messages, fall back to last message
+  const getMessagePreview = (message: any) => {
+    if (!message) return "No messages yet";
+    
+    if (message.type === 'attachment') {
+      try {
+        const attachmentData = JSON.parse(message.content);
+        return `📎 ${attachmentData.fileName}`;
+      } catch {
+        return "📎 Attachment";
+      }
+    }
+    
+    return message.content;
+  };
+
+  const chatPreview = latestUnreadMessage 
+    ? getMessagePreview(latestUnreadMessage)
+    : (lastMessage ? getMessagePreview(lastMessage) : "No messages yet");
 
   // Get date display
   const dateDisplay = lastMessage ? formatMessageDate(lastMessage.created_at) : "";
-
-  // Get unread count (mock for now)
-  const unreadCount = lastMessage && !lastMessage.is_read ? 1 : 0;
 
   // Check if this is a phone number
   const isPhoneNumber = /^\+?[\d\s-()]+$/.test(chatName);
@@ -90,11 +119,21 @@ export function ChatItem({ chat }: ChatItemProps) {
     ? otherParticipants[0].profiles.avatar_url
     : null;
 
+  // For direct messages, check if the other user is online
+  const otherUser = isDM && otherParticipants.length > 0 ? otherParticipants[0] : null;
+  const isOtherUserOnline = otherUser ? isUserOnlineById(otherUser.user_id) : false;
+
+  // For group chats, check if any participants are online
+  const hasOnlineParticipants = !isDM && otherParticipants.some(p => isUserOnlineById(p.user_id));
+  const onlineParticipantsCount = !isDM ? otherParticipants.filter(p => isUserOnlineById(p.user_id)).length : 0;
+  const shouldShowOnlineIndicator = isDM ? isOtherUserOnline : hasOnlineParticipants;
+
   return (
     <div
       className={cn(
         "flex cursor-pointer items-start px-4 py-3 transition-colors hover:bg-gray-50/80 border-b border-gray-50/50 relative",
-        isActive && "bg-green-50/50 hover:bg-green-50/70 border-green-100/50"
+        isActive && "bg-green-50/50 hover:bg-green-50/70 border-green-100/50",
+        unreadCount > 0 && !isActive && "bg-blue-50/30 hover:bg-blue-50/50 border-blue-100/30"
       )}
       onClick={() => router.push(`/chat/${chat.id}`)}
     >
@@ -124,8 +163,17 @@ export function ChatItem({ chat }: ChatItemProps) {
           </AvatarFallback>
         </Avatar>
         
-        {/* Online status indicator */}
-        <div className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 bg-green-500 border-2 border-white rounded-full" />
+        {/* Unread message indicator dot */}
+        {unreadCount > 0 && (
+          <div className="absolute -top-1 -right-1 h-4 w-4 bg-blue-500 border-2 border-white rounded-full flex items-center justify-center">
+            <div className="h-2 w-2 bg-white rounded-full"></div>
+          </div>
+        )}
+        
+        {/* Online status indicator - only show if no unread messages */}
+        {unreadCount === 0 && shouldShowOnlineIndicator && (
+          <div className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 bg-green-500 border-2 border-white rounded-full" />
+        )}
       </div>
       
       <div className="ml-3 flex-1 min-w-0">
@@ -136,7 +184,10 @@ export function ChatItem({ chat }: ChatItemProps) {
               {isPhoneNumber && (
                 <AiOutlinePhone className="h-3.5 w-3.5 text-gray-400 shrink-0" />
               )}
-              <span className="font-semibold text-gray-900 truncate text-[15px] leading-tight">
+              <span className={cn(
+                "text-gray-900 truncate text-[15px] leading-tight",
+                unreadCount > 0 ? "font-bold" : "font-semibold"
+              )}>
                 {chatName}
               </span>
             </div>
@@ -191,11 +242,17 @@ export function ChatItem({ chat }: ChatItemProps) {
           {/* Time and unread count */}
           <div className="flex items-center space-x-2 shrink-0 ml-2">
             {unreadCount > 0 && (
-              <div className="flex h-5 w-5 items-center justify-center rounded-full bg-green-500 text-[11px] font-semibold text-white shadow-sm">
-                {unreadCount}
+              <div className={cn(
+                "flex items-center justify-center rounded-full text-[11px] font-semibold text-white shadow-sm min-w-[20px] px-1.5 py-0.5",
+                unreadCount > 99 ? "bg-red-500" : "bg-blue-500"
+              )}>
+                {unreadCount > 99 ? "99+" : unreadCount}
               </div>
             )}
-            <span className="text-[12px] text-gray-500 whitespace-nowrap font-medium">
+            <span className={cn(
+              "text-[12px] whitespace-nowrap font-medium",
+              unreadCount > 0 ? "text-gray-700" : "text-gray-500"
+            )}>
               {dateDisplay}
             </span>
           </div>
@@ -204,12 +261,37 @@ export function ChatItem({ chat }: ChatItemProps) {
         {/* Message Preview Row */}
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-1.5 flex-1 mr-2">
-            {lastMessage && lastMessage.is_read && (
+            {lastMessage && lastMessage.user_id === user?.id && lastMessage.is_read && (
               <AiOutlineCheckCircle className="h-3.5 w-3.5 text-green-500 shrink-0" />
             )}
-            <p className="text-[13px] text-gray-600 truncate leading-relaxed">
-              {chatPreview}
-            </p>
+            {lastMessage && lastMessage.user_id === user?.id && !lastMessage.is_read && (
+              <AiOutlineCheck className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+            )}
+            
+            {/* Message preview with sender info for group chats */}
+            <div className="flex-1 min-w-0">
+              {latestUnreadMessage && !isDM && (
+                <span className={cn(
+                  "text-[12px] font-medium mr-1",
+                  unreadCount > 0 ? "text-blue-600" : "text-gray-500"
+                )}>
+                  {otherParticipants.find(p => p.user_id === latestUnreadMessage.user_id)?.profiles?.full_name || "Unknown"}:
+                </span>
+              )}
+              <span className={cn(
+                "text-[13px] leading-relaxed",
+                unreadCount > 0 ? "text-gray-900 font-medium" : "text-gray-600"
+              )}>
+                {chatPreview}
+              </span>
+              
+              {/* Online status for group chats */}
+              {!isDM && onlineParticipantsCount > 0 && (
+                <span className="text-[11px] text-green-600 ml-2">
+                  • {onlineParticipantsCount} online
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </div>

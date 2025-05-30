@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 import { Session, User } from "@supabase/supabase-js";
 import { userDataDAO } from "@/lib/user-data-dao";
+import { useOnlineStatus } from "@/hooks/use-chat-data";
 
 type AuthContextType = {
   user: User | null;
@@ -16,6 +17,13 @@ type AuthContextType = {
 };
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+// Separate component to handle online status tracking
+function OnlineStatusTracker() {
+  console.log("🟢 OnlineStatusTracker component mounted and running");
+  useOnlineStatus();
+  return null; // This component doesn't render anything
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -256,7 +264,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signOut,
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={value}>
+    {children}
+    {user && <OnlineStatusTracker />}
+  </AuthContext.Provider>;
 }
 
 export const useAuth = () => {
